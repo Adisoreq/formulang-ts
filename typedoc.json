@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "FormuLang-TS",
+  "entryPoints": ["src/index.ts", "src/abstractions/index.ts", "src/stock/index.ts"],
+  "out": "docs/api",
+  "readme": "none",
+  "excludeInternal": true,
+  "excludePrivate": true,
+  "includeVersion": true,
+  "sort": ["source-order"],
+  "sourceLinkTemplate": "https://github.com/Adisoreq/formulang-ts/blob/{gitRevision}/{path}#L{line}",
+  "validation": {
+    "notExported": false
+  }
+}

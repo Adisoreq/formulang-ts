@@ -1,0 +1,106 @@
+{
+  "name": "formulang-ts",
+  "version": "0.1.0",
+  "description": "Modular TypeScript implementation of the FormuLang formula language standard (Core 0.3, Stock 0.1).",
+  "keywords": [
+    "formulang",
+    "formula",
+    "template",
+    "expression",
+    "embedded",
+    "interpreter",
+    "evaluator",
+    "parser",
+    "scripting-language",
+    "stock",
+    "patterns",
+    "indicators",
+    "trading",
+    "strategies"
+  ],
+  "author": "Adrian Piznal",
+  "license": "MIT",
+  "homepage": "https://github.com/Adisoreq/formulang-ts#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Adisoreq/formulang-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Adisoreq/formulang-ts/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./abstractions": {
+      "import": {
+        "types": "./dist/abstractions/index.d.ts",
+        "default": "./dist/abstractions/index.js"
+      },
+      "require": {
+        "types": "./dist/abstractions/index.d.cts",
+        "default": "./dist/abstractions/index.cjs"
+      }
+    },
+    "./stock": {
+      "import": {
+        "types": "./dist/stock/index.d.ts",
+        "default": "./dist/stock/index.js"
+      },
+      "require": {
+        "types": "./dist/stock/index.d.cts",
+        "default": "./dist/stock/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "docs": "typedoc",
+    "check:package": "publint && attw --pack . --profile node16",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build && npm run check:package",
+    "prepublishOnly": "npm run check"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.1.0",
+    "eslint": "^10.14.0",
+    "prettier": "^3.10.0",
+    "publint": "^0.3.25",
+    "tsup": "^9.0.0",
+    "typedoc": "^0.28.20",
+    "typescript": "~5.9",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
+  }
+}

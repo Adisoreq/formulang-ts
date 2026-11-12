@@ -1,0 +1,8 @@
+dist
+coverage
+docs/api
+node_modules
+package-lock.json
+*.md
+samples/**/dist
+tests/conformance/data

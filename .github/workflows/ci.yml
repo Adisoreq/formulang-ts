@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, test and build (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The development tools (Vitest 5) need Node 22.12+
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run coverage
+      - run: npm run build
+      - run: npm run check:package
+
+  samples:
+    name: Samples
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            samples/*/package-lock.json
+      # The samples use the built package (dependency "formulang-ts": "file:../..")
+      - run: npm ci && npm run build
+      - name: Calculator CLI
+        working-directory: samples/calculator-cli
+        run: |
+          npm ci
+          npm run typecheck
+          npm start -- -f examples/statistics.fl
+      - name: Web preview
+        working-directory: samples/web-preview
+        run: |
+          npm ci
+          npm run build
+
+  runtime:
+    name: Built package on Node ${{ matrix.node }}
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Lowest supported runtime of the library (package.json "engines")
+        node: [20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Import from ESM and CommonJS
+        run: |
+          node --input-type=module -e 'import { evaluate } from "formulang-ts"; import { registerStock } from "formulang-ts/stock"; const r = evaluate("ROUND(1.005, 2)"); if (r.text !== "1.01") throw new Error(r.text); console.log("ESM", r.text, typeof registerStock);'
+          node -e 'const { evaluate } = require("formulang-ts"); const r = evaluate("SUM([1, 2, 3])"); if (r.text !== "6") throw new Error(r.text); console.log("CJS", r.text);'
