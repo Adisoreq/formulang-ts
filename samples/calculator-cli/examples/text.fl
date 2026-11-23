@@ -1,0 +1,14 @@
+<#
+  Unicode texts and FORMAT (core-1.0).
+  A character is one Unicode code point: LEN("żółw") is 4.
+#>
+
+$word = "Zażółć gęślą jaźń"
+$letters = LEN(REPLACE($word, " ", ""))
+
+FORMAT("\"{0}\" has {1} letters; reversed: \"{2}\", upper case: \"{3}\"", [
+    $word,
+    $letters,
+    REVERSE($word),
+    UPPERCASE($word)
+])

@@ -6,6 +6,7 @@ import { PatternOutput, StrategyOutput } from "./components/PatternStrategyPanel
 import { Editor } from "./components/Editor";
 import { ConsoleView, IterationsView, Problems } from "./components/Output";
 import { Sidebar } from "./components/Sidebar";
+import { TimeOutput } from "./components/TimeOutput";
 import {
   type DefaultRun,
   type Diagnostics,
@@ -13,6 +14,7 @@ import {
   type IterationRun,
   type PatternRun,
   type StrategyRun,
+  type TimeRun,
   createEnvironment,
   diagnose,
   referenceEnvironment,
@@ -22,13 +24,14 @@ import {
   runPattern,
   runStock,
   runStrategies,
+  runTime,
 } from "./model/engine";
 import { CONTEXTS, EXAMPLES, NEW_FORMULA, formulaKey } from "./model/examples";
 import { suggestions, vocabulary } from "./model/language";
 import { regenerateCandles, resetFormula, selectedFormula, setFormula, setState, state } from "./model/state";
 import type { ContextKind, Example } from "./model/types";
 
-type Run = DefaultRun | IterationRun | IndicatorRun | PatternRun | StrategyRun;
+type Run = DefaultRun | IterationRun | TimeRun | IndicatorRun | PatternRun | StrategyRun;
 
 interface Execution {
   readonly kind: ContextKind;
@@ -48,7 +51,11 @@ function execute(): Execution {
     config,
     formula: state.formulas[formulaKey("indicator", config.id)] ?? "",
   }));
-  const environment = createEnvironment(indicators);
+  const patterns = state.patterns.map((config) => ({
+    config,
+    formula: state.formulas[formulaKey("pattern", config.id)] ?? "",
+  }));
+  const environment = createEnvironment(indicators, patterns);
   const started = performance.now();
   let run: Run;
   switch (kind) {
@@ -57,6 +64,9 @@ function execute(): Execution {
       break;
     case "iteration":
       run = runIterations(formula, state.iterationCount, environment);
+      break;
+    case "time":
+      run = runTime(formula, environment);
       break;
     case "stock":
       run = runStock(formula, state.candles, environment);
@@ -69,7 +79,11 @@ function execute(): Execution {
       );
       break;
     case "pattern":
-      run = runPattern(formula, state.candles, environment);
+      run = runPattern(
+        patterns.find((p) => p.config.id === state.selected.pattern)!,
+        state.candles,
+        environment,
+      );
       break;
     case "strategy":
       run = runStrategies(
@@ -124,6 +138,8 @@ export function App() {
           state.formulas,
           // Everything of the indicators except the style of the series, which does not need an execution
           state.indicators.map((i) => ({ ...i, series: i.series.map((series) => [series.id, series.name]) })),
+          // Patterns are in the registry too; their appearance does not need an execution
+          state.patterns.map((p) => [p.id, p.patternId, p.name, p.length, p.parameters]),
           state.iterationCount,
         ]),
       ],
@@ -256,6 +272,9 @@ export function App() {
           <Match when={execution().kind === "iteration" && (execution().run as IterationRun)}>
             {(run) => <IterationsView run={run()} diagnostics={execution().diagnostics} />}
           </Match>
+          <Match when={execution().run.kind === "time" && (execution().run as TimeRun)}>
+            {(run) => <TimeOutput run={run()} diagnostics={execution().diagnostics} />}
+          </Match>
           <Match when={execution().kind === "stock" && (execution().run as IterationRun)}>
             {(run) => <StockIterations run={run()} diagnostics={execution().diagnostics} />}
           </Match>
@@ -281,6 +300,8 @@ function succeeded(execution: Execution): boolean {
       return run.execution.successful;
     case "iterations":
       return run.results.length > 0 && run.results.every((r) => r.successful);
+    case "time":
+      return !run.session.failed;
     case "indicator":
     case "pattern":
       return run.error === undefined;

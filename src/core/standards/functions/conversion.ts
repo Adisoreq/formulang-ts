@@ -159,6 +159,10 @@ export const objectFunctions = (): FlFunction[] => [
     "KEYS",
     overload((a) => A(obj(a[0]).keys.map(T)), objectArg("object")),
   ),
+];
+
+/** Target of the object literal translation: `{ k1: a, "k2": b }` is `OBJECT("k1", a, "k2", b)`. */
+export const objectLiteralFunctions = (): FlFunction[] => [
   fn(
     "OBJECT",
     overload((a) => createObject(a), ArgumentTemplate.any("entries", { optional: true, multiple: true })),

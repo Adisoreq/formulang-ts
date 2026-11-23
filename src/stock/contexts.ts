@@ -2,17 +2,17 @@ import type { IObject, IValue } from "../abstractions/primitives.js";
 import type { ContextType, IContext, IEnvironment } from "../abstractions/structures.js";
 import { Errors, Executor, FlObject, IterationContext, Value, arrayToString } from "../core/index.js";
 import { type Candle, candleToValue, isValidCandle } from "./candle.js";
-
-/** Name of the indicator function. */
-export const INDICATOR_FUNCTION = "INDICATOR";
+import { STOCK_IDENTIFIER, StockFunctionNames } from "./names.js";
 
 /**
- * Candles shared by a Stock Context and the Indicator Contexts created for it, with the computed indicators.
+ * Candles shared by a Stock Context and every child context created by `LOAD_INDICATOR` or `LOAD_PATTERN`, with
+ * the computed indicator and pattern series, which are deterministic
+ * (docs/standards/stock/functions/LOAD_INDICATOR.md, "Performance").
  *
  * @internal
  */
 export class StockSeries {
-  readonly #indicators = new Map<string, IValue>();
+  readonly #stored = new Map<string, IValue>();
   readonly #sourceKeys = new WeakMap<object, string>();
   readonly candles: readonly Candle[];
   readonly executor: Executor;
@@ -50,12 +50,12 @@ export class StockSeries {
     return this.candles.length;
   }
 
-  getIndicator(key: string): IValue | undefined {
-    return this.#indicators.get(key);
+  getStored(key: string): IValue | undefined {
+    return this.#stored.get(key);
   }
 
-  storeIndicator(key: string, series: IValue): void {
-    this.#indicators.set(key, series);
+  store(key: string, series: IValue): void {
+    this.#stored.set(key, series);
   }
 
   /** Key of a source array in the indicator cache: `CLOSE`, or the serialized array. */
@@ -78,13 +78,20 @@ export class StockContext extends IterationContext {
   /** @internal */
   readonly series: StockSeries;
 
-  protected constructor(environment: IEnvironment, series: StockSeries) {
+  /** @internal Key of the computed indicator or pattern; `undefined` if the host application created this context. */
+  readonly formulaKey: string | undefined;
+  /** Context that called `LOAD_INDICATOR` or `LOAD_PATTERN`, or `undefined` if the host application created it. */
+  readonly caller: IContext | undefined;
+
+  protected constructor(environment: IEnvironment, series: StockSeries, formulaKey?: string, caller?: IContext) {
     super(environment, series.count);
     this.series = series;
+    this.formulaKey = formulaKey;
+    this.caller = caller;
   }
 
   /**
-   * @param executor Executor of the indicators computed by `INDICATOR`.
+   * @param executor Executor of the formulas loaded with `LOAD_INDICATOR` and `LOAD_PATTERN`.
    * @throws {RangeError} if a candle does not meet the requirements of `Stock.Candle`.
    */
   static override create(environment: IEnvironment, candles: CandlesArgument = [], executor?: Executor): StockContext {
@@ -106,16 +113,37 @@ export class StockContext extends IterationContext {
     this.setConstant("TIME", this.series.time);
   }
 
-  /** Computes an indicator for the candles of this context, like `INDICATOR(id, parameters, source)`. */
+  /**
+   * Computes an indicator of the registry for these candles, like `LOAD_INDICATOR(id, parameters, source)`.
+   *
+   * @param parameters Parameters of the indicator; missing ones have their default values.
+   * @param source Input series (`N` Numbers or `null` values); `CLOSE` by default.
+   * @returns An Array of `N` values, or an Error.
+   */
   computeIndicator(id: string, parameters?: IObject, source?: IValue): IValue {
-    const indicator = this.environment.getFunction(INDICATOR_FUNCTION);
-    if (indicator === undefined) {
-      return Value.error(Errors.unknownSymbolError("The environment does not support stock-0.1."));
+    return this.#invoke(StockFunctionNames.loadIndicator, [
+      Value.text(id),
+      Value.object(parameters ?? new FlObject()),
+      source ?? this.series.close,
+    ]);
+  }
+
+  /**
+   * Checks a pattern of the registry for these candles, like `LOAD_PATTERN(id, parameters)`.
+   *
+   * @param parameters Parameters of the pattern; missing ones have their default values.
+   * @returns An Array of `N` Booleans, or an Error.
+   */
+  computePattern(id: string, parameters?: IObject): IValue {
+    return this.#invoke(StockFunctionNames.loadPattern, [Value.text(id), Value.object(parameters ?? new FlObject())]);
+  }
+
+  #invoke(functionName: string, args: IValue[]): IValue {
+    const fn = this.environment.getFunction(functionName);
+    if (fn === undefined) {
+      return Value.error(Errors.unknownSymbolError(`The environment does not support ${STOCK_IDENTIFIER}.`));
     }
-    return indicator.invoke(
-      [Value.text(id), Value.object(parameters ?? new FlObject()), source ?? this.series.close],
-      this,
-    );
+    return fn.invoke(args, this);
   }
 }
 
@@ -143,12 +171,10 @@ export class IndicatorContext extends StockContext {
     series: StockSeries,
     readonly parameters: IValue,
     readonly source: IValue,
-    /** @internal Key of the indicator in the cache of the series. */
-    readonly indicatorKey: string | undefined,
-    /** Context that called `INDICATOR`. */
-    readonly caller: IContext | undefined,
+    indicatorKey: string | undefined,
+    caller: IContext | undefined,
   ) {
-    super(environment, series);
+    super(environment, series, indicatorKey, caller);
   }
 
   /**
@@ -190,14 +216,48 @@ export class IndicatorContext extends StockContext {
   }
 }
 
-/** Pattern Context: the formula returns a Boolean for every candle. */
+/**
+ * Pattern Context: the formula returns `true` if the pattern is found at the current candle. Constant:
+ * `PARAMETERS`.
+ */
 export class PatternContext extends StockContext {
+  /** @internal */
+  constructor(
+    environment: IEnvironment,
+    series: StockSeries,
+    readonly parameters: IValue,
+    patternKey: string | undefined,
+    caller: IContext | undefined,
+  ) {
+    super(environment, series, patternKey, caller);
+  }
+
+  /**
+   * A Pattern Context for the host application.
+   *
+   * @param parameters The `PARAMETERS` object (not completed with default values); `{ }` by default.
+   */
   static override create(
     environment: IEnvironment,
     candles: CandlesArgument = [],
     executor?: Executor,
+    parameters?: IObject,
   ): PatternContext {
-    return prepare(new PatternContext(environment, new StockSeries(asCandles(candles), executor)));
+    const series = new StockSeries(asCandles(candles), executor);
+    return prepare(
+      new PatternContext(
+        environment,
+        series,
+        Value.object(parameters ?? new FlObject(), undefined, "PARAMETERS"),
+        undefined,
+        undefined,
+      ),
+    );
+  }
+
+  protected override loadContextData(): void {
+    super.loadContextData();
+    this.setConstant("PARAMETERS", this.parameters);
   }
 }
 

@@ -14,7 +14,7 @@ import { execute, run } from "../helpers.js";
 // docs/semantics/execution.md, docs/semantics/evaluation.md
 describe("Execution", () => {
   it("gives the result of the parsing example", () =>
-    expect(run('REQUIRE "core-0.2+"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)')).toBe("5"));
+    expect(run('REQUIRE "core-1+"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)')).toBe("5"));
 
   it("gives the result of the last sequence (example of the standard)", () => {
     expect(run('$x = 4\n$y = IF($x > 0, DIV(1, $x), ERROR("Negative!"))\n$y')).toBe("0.25");

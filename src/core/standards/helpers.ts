@@ -145,8 +145,3 @@ export function valuesEqual(a: IValue, b: IValue): boolean {
       return false;
   }
 }
-
-/** Ordinal comparison of texts (by UTF-16 code units). */
-export function compareOrdinal(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}

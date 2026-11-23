@@ -5,9 +5,8 @@
 **FormuLang-TS** is a multi-platform, modular TypeScript library implementing the [**FormuLang**](https://github.com/Adisoreq/FormuLang) standard.
 
 ![GitHub License](https://img.shields.io/github/license/Adisoreq/formulang-ts)
-[![Status](https://img.shields.io/badge/status-under%20development-orange)](#project-status)
-[![Core](https://img.shields.io/badge/core-0.3-blue)](docs/conformance.md)
-[![Stock](https://img.shields.io/badge/stock-0.1-blue)](docs/conformance.md)
+[![npm](https://img.shields.io/npm/v/formulang-ts?label=npm)](https://www.npmjs.com/package/formulang-ts)
+[![Standards](https://img.shields.io/badge/standards-core--1.0%20%C2%B7%20stock--1.0-2fbf71)](docs/conformance.md)
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Changelog**](CHANGELOG.md)
 
@@ -46,15 +45,19 @@ else console.log(result.error.toString());  // e.g. [UNKNOWN_SYMBOL_ERROR (5)] V
 
 ## Features
 
-- **Core 0.3** and **Stock 0.1** standards: all Core functions and procedures, lambdas, objects, the Iteration Context, the Stock context types, `CANDLE` and `INDICATOR`.
+- **Core 1.0** and **Stock 1.0** standards: all Core functions and procedures, lambdas, objects, scoped comments, Unicode texts, `FORMAT`, the time functions and `NOW`, the Iteration and Time Contexts; the Stock context types, the formula registry of indicators and patterns, `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR` and `LOAD_PATTERN`.
 - **Modular**: one package with separate entry points – `formulang-ts`, `formulang-ts/abstractions` and `formulang-ts/stock` – each as an ES module and as CommonJS, with type declarations and no runtime dependencies.
 - **Two levels of API**: a facade working with plain JavaScript values (`evaluate`, `createEngine`), and the pipeline API following the architecture of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet) (environments, contexts, replaceable stages, typed function overloads).
 - **Errors are values**: a formula never throws; every problem is a FormuLang Error with a code from the standard, and validation reports every problem at once.
-- **Same results as the reference implementation**: the test cases of FormuLang.NET are the conformance tests of this library, and both give identical outputs (see [Conformance](docs/conformance.md)).
+- **Same results as the reference implementation**: the test cases of FormuLang.NET and the language-independent conformance tests of the standard are the tests of this library, and both implementations give identical outputs (see [Conformance](docs/conformance.md)).
 
 ## Installation
 
-The library is not published on npm yet; see [Getting started](docs/getting-started.md#installation) to build and install it from the repository.
+```bash
+npm install formulang-ts
+```
+
+The package needs Node.js 20 or newer, or any modern browser (through a bundler). See [Getting started](docs/getting-started.md#installation).
 
 | Import | Content |
 | :----- | :------ |
@@ -64,7 +67,7 @@ The library is not published on npm yet; see [Getting started](docs/getting-star
 
 ## Project status
 
-The library implements the latest versions of the standards, **Core 0.3** and **Stock 0.1**, which are still in progress. It is in the prototyping stage: the API can change in any `0.x` version. See [Conformance](docs/conformance.md) for the details, the implementation choices and the proposals for the standard.
+The library implements the first stable versions of the standards, **Core 1.0** and **Stock 1.0**. From version `1.0.0` on it follows [Semantic Versioning](https://semver.org): changes within the `1.x` versions are backward compatible. See [Conformance](docs/conformance.md) for the details, the implementation choices and the proposals for the standard, and [Development](docs/development.md#releasing) for the releases.
 
 
 ## Related projects

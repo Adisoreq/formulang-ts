@@ -1,6 +1,6 @@
 {
   "name": "formulang-web-preview",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Sample of FormuLang-TS: executes formulas of the Core and Stock standards in the browser.",
   "type": "module",

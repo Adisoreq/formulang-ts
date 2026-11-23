@@ -1,12 +1,14 @@
 import type { IFunction } from "../../abstractions/functions.js";
+import type { IValue } from "../../abstractions/primitives.js";
+import { ContainerType } from "../../abstractions/primitives.js";
 import type { IEnvironment, IStandard } from "../../abstractions/structures.js";
 import { FlObject } from "../primitives/object.js";
 import { TypeNames } from "../primitives/types.js";
 import { Value } from "../primitives/value.js";
-import { SerializationVariables } from "../serialization/serializer.js";
+import { numberToString, SerializationVariables } from "../serialization/serializer.js";
 import { CoreStandard } from "../standards/core-standard.js";
 import { AbstractTree } from "./abstract-tree.js";
-import { EnvironmentVariables } from "./context-variables.js";
+import { EnvironmentConstants, EnvironmentVariables } from "./context-variables.js";
 import { standardIdentifier } from "./standard.js";
 
 /**
@@ -16,6 +18,13 @@ import { standardIdentifier } from "./standard.js";
  * A formula never changes the environment: it changes the copies of the environment variables in its context.
  */
 export class Environment extends FlObject implements IEnvironment {
+  /**
+   * Clock of the `NOW` constant: Unix time in milliseconds, UTC. Every pre-execution reads it once
+   * (docs/semantics/pre-execution.md), so `NOW` does not change during an execution. `undefined`: `NOW` is the
+   * value of the environment constant, set by the host application with {@link setNow}.
+   */
+  clock: (() => number) | undefined = Date.now;
+
   readonly #standards: string[] = [];
   readonly #extendedTypes: string[] = [];
   readonly #typeTree = new AbstractTree<string>(TypeNames.Object, TypeNames.Object);
@@ -27,8 +36,8 @@ export class Environment extends FlObject implements IEnvironment {
 
   /**
    * An environment that supports the Core standard: its functions and procedures, the constants `STANDARDS`,
-   * `E`, `PI`, `PHI`, `TRUE`, `FALSE` and `NULL`, the variables `array_indexing` and `suppress_errors`, and the
-   * serialization variables.
+   * `E`, `PI`, `PHI`, `NOW`, `TRUE`, `FALSE` and `NULL`, the variables `array_indexing`, `suppress_errors` and
+   * `time_offset`, and the serialization variables.
    */
   static create(): Environment {
     const environment = new Environment();
@@ -37,6 +46,7 @@ export class Environment extends FlObject implements IEnvironment {
     environment.initConstant("E", Value.number(Math.E, "E"));
     environment.initConstant("PI", Value.number(Math.PI, "PI"));
     environment.initConstant("PHI", Value.number((1 + Math.sqrt(5)) / 2, "PHI"));
+    environment.initConstant(EnvironmentConstants.now, nowValue(Date.now()));
     // Keyword constants
     environment.initConstant("TRUE", Value.boolean(true, "TRUE"));
     environment.initConstant("FALSE", Value.boolean(false, "FALSE"));
@@ -44,6 +54,7 @@ export class Environment extends FlObject implements IEnvironment {
     // Variables
     environment.initVariable(EnvironmentVariables.arrayIndexing, Value.number(0, "0"));
     environment.initVariable(EnvironmentVariables.suppressErrors, Value.boolean(false, "false"));
+    environment.initVariable(EnvironmentVariables.timeOffset, Value.number(0, "0"));
     // Serialization variables
     environment.initVariable(SerializationVariables.decimalPlace, Value.number(-1, "-1"));
     environment.initVariable(SerializationVariables.splitArray, Value.boolean(false, "false"));
@@ -53,6 +64,27 @@ export class Environment extends FlObject implements IEnvironment {
 
     environment.registerStandard(CoreStandard.instance);
     return environment;
+  }
+
+  /**
+   * Pins the `NOW` constant to a point in time (Unix time in milliseconds, UTC) and stops reading the clock
+   * ({@link clock} becomes `undefined`), e.g. for deterministic tests.
+   */
+  setNow(unixTimeMilliseconds: number): void {
+    this.clock = undefined;
+    this.setConstant(EnvironmentConstants.now, nowValue(unixTimeMilliseconds));
+  }
+
+  /**
+   * The value of `NOW` for a new execution: the current time of the {@link clock}, or the value of the `NOW`
+   * constant of the environment. `undefined` if the environment has neither.
+   */
+  static readNow(environment: IEnvironment): IValue | undefined {
+    if (environment instanceof Environment && environment.clock !== undefined) return nowValue(environment.clock());
+    const container = environment.getProperty(EnvironmentConstants.now);
+    return container?.containerType === ContainerType.Constant && container.canAccessValue
+      ? container.getValue()
+      : undefined;
   }
 
   get standards(): readonly string[] {
@@ -116,4 +148,9 @@ export class Environment extends FlObject implements IEnvironment {
     this.#typeTree.addNode(extendedType, extendedType, parentType ?? TypeNames.Object);
     this.#extendedTypes.push(extendedType);
   }
+}
+
+/** A `NOW` value: Unix time in milliseconds. */
+export function nowValue(unixTimeMilliseconds: number): IValue {
+  return Value.number(unixTimeMilliseconds, numberToString(unixTimeMilliseconds));
 }

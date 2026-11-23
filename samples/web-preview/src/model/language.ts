@@ -28,6 +28,8 @@ export interface HighlightToken {
 const KEYWORDS = new Set(["true", "false", "null"]);
 
 const RULES: readonly [RegExp, TokenClass | "identifier"][] = [
+  // A scoped comment may span lines; an unclosed one ends with the formula
+  [/<#[\s\S]*?(?:#>|$(?![\s\S]))/y, "comment"],
   [/#[^\n]*/y, "comment"],
   [/"(?:[^"\\\n]|\\.)*"?/y, "text"],
   [/0[xX][0-9a-fA-F]+|(?:\d[\d_]*(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/y, "number"],

@@ -2,10 +2,11 @@ import { For, Show, createMemo } from "solid-js";
 import { type ChartOverlay, StockChart } from "../chart/StockChart";
 import { formatColor, parseColor } from "../model/colors";
 import type { Diagnostics, IndicatorRun } from "../model/engine";
-import { newParameter, newSeries, problemsOf } from "../model/indicators";
+import { newSeries, problemsOf } from "../model/indicators";
 import { indicatorIndex, resetIndicator, setState, state } from "../model/state";
 import type { FillMode, SeriesMode } from "../model/types";
 import { Problems } from "./Output";
+import { ParameterTable, ParameterValues } from "./Parameters";
 
 const FILL_MODES: readonly FillMode[] = ["line", "area", "baseline", "histogram"];
 const SERIES_MODES: readonly { readonly value: SeriesMode; readonly label: string }[] = [
@@ -60,79 +61,11 @@ export function IndicatorEditor() {
         </label>
       </div>
       <p class="config-note">
-        Other formulas use it as <code>INDICATOR("{config().indicatorId}")</code>, with the default values of its
-        parameters.
+        Other formulas load it with <code>LOAD_INDICATOR("{config().indicatorId}")</code>, with the default values of
+        its parameters.
       </p>
 
-      <section class="editor-section">
-        <header>
-          <span class="field-label">Parameters</span>
-          <code class="muted">PARAMETERS.&lt;id&gt;</code>
-          <button
-            type="button"
-            class="ghost"
-            onClick={() => set("parameters", (p: unknown[]) => [...p, newParameter(config())])}
-          >
-            + Add parameter
-          </button>
-        </header>
-        <Show when={config().parameters.length > 0} fallback={<p class="empty">The indicator has no parameters.</p>}>
-          <table class="series-table edit-table">
-            <thead>
-              <tr>
-                <th>Id</th>
-                <th>Name</th>
-                <th>Default value</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              <For each={config().parameters}>
-                {(parameter, i) => (
-                  <tr>
-                    <td>
-                      <input
-                        type="text"
-                        class="mono"
-                        value={parameter.id}
-                        aria-label="Parameter id"
-                        onInput={(e) => set("parameters", i(), "id", text(e))}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        value={parameter.name}
-                        aria-label="Parameter name"
-                        onInput={(e) => set("parameters", i(), "name", text(e))}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={parameter.defaultValue}
-                        aria-label="Default value"
-                        onInput={(e) => set("parameters", i(), "defaultValue", number(e))}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="remove"
-                        title="Remove the parameter"
-                        aria-label={`Remove parameter ${parameter.id}`}
-                        onClick={() => set("parameters", (p: unknown[]) => p.filter((_, j) => j !== i()))}
-                      >
-                        ×
-                      </button>
-                    </td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
-        </Show>
-      </section>
+      <ParameterTable parameters={config().parameters} set={(...path) => set("parameters", ...path)} kind="indicator" />
 
       <section class="editor-section">
         <header>
@@ -261,8 +194,8 @@ export function IndicatorOutput(props: { readonly run: IndicatorRun; readonly di
         <p class="note">
           <Show when={empty()}>The indicator has no value for any candle: every result is null. </Show>
           An indicator gives <code>null</code>, a Number or an Object of Numbers for every candle.{" "}
-          <code>INDICATOR(id)</code> returns the whole series (an Array with a value per candle): take the value of the
-          current candle with <code>[I]</code>, e.g. <code>INDICATOR("SMA")[I]</code>.
+          <code>LOAD_INDICATOR(id)</code> returns the whole series (an Array with a value per candle): take the value of
+          the current candle with <code>[I]</code>, e.g. <code>LOAD_INDICATOR("SMA")[I]</code>.
         </p>
       </Show>
 
@@ -316,35 +249,7 @@ export function IndicatorOutput(props: { readonly run: IndicatorRun; readonly di
         </For>
       </div>
 
-      <Show when={config().parameters.length > 0}>
-        <div class="parameter-values">
-          <span class="field-label">Parameter values of the chart</span>
-          <div class="config-row">
-            <For each={config().parameters}>
-              {(parameter, i) => (
-                <label class="field">
-                  <span class="field-label">
-                    {parameter.name} <code>{parameter.id}</code>
-                  </span>
-                  <input
-                    type="number"
-                    value={parameter.value}
-                    onInput={(e) => set("parameters", i(), "value", number(e))}
-                  />
-                  <button
-                    type="button"
-                    class="link"
-                    disabled={parameter.value === parameter.defaultValue}
-                    onClick={() => set("parameters", i(), "value", parameter.defaultValue)}
-                  >
-                    default {parameter.defaultValue}
-                  </button>
-                </label>
-              )}
-            </For>
-          </div>
-        </div>
-      </Show>
+      <ParameterValues parameters={config().parameters} set={(...path) => set("parameters", ...path)} />
     </>
   );
 }

@@ -1,4 +1,4 @@
-// Generated from FormuLang.NET/tests/*/ParserTests.cs (Adisoreq/formulang-dotnet@21ce986).
+// Generated from FormuLang.NET/tests/*/ParserTests.cs (Adisoreq/formulang-dotnet@7e85d55).
 // Test cases of the reference implementation; regenerate instead of editing by hand.
 
 /** `OperatorTranslation(string formula, string expected)` */
@@ -51,7 +51,7 @@ export const bindingPower = [
 export const procedureCallWithoutParentheses = [
   ["SET $x 100", "SET($x,100)"],
   ["SET $x 1 + 2", "SET($x,ADD(1,2))"],
-  ["REQUIRE \"core-0.2+\"", "REQUIRE(\"core-0.2+\")"],
+  ["REQUIRE \"core-1+\"", "REQUIRE(\"core-1+\")"],
   ["SET($x, 100)", "SET($x,100)"],
 ] as const;
 

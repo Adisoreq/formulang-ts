@@ -1,6 +1,6 @@
 # Calculator CLI
 
-Sample of [FormuLang-TS](../../README.md): executes a formula in a basic Core environment and prints the result, or the errors that stopped the execution. It is a separate project that uses the built package, like an application installed from npm.
+Sample of [FormuLang-TS](../../README.md): executes a formula in a Core environment with the Stock standard (`CANDLE`, `IS_BULLISH`, `IS_BEARISH`) and prints the result, or the errors that stopped the execution. It is a separate project that uses the built package, like an application installed from npm.
 
 ## Running
 
@@ -22,7 +22,7 @@ npm start -- "2 + 2 * 2"
 npm start -- -f examples/statistics.fl
 ```
 
-Without arguments it starts an interactive mode: type a formula (it may have several lines) and press Enter on an empty line to execute it. A formula can also be piped through the standard input (`npm start < formula.fl`).
+Without arguments it starts an interactive mode: type a formula (it may have several lines) and press Enter on an empty line to execute it (an empty line inside an unclosed scoped comment `<# … #>` does not execute it). A formula can also be piped through the standard input (`npm start < formula.fl`).
 
 | Exit code | Meaning |
 | :-------: | :------ |
@@ -37,4 +37,4 @@ Without arguments it starts an interactive mode: type a formula (it may have sev
 | File | Content |
 | :--- | :------ |
 | [src/main.ts](src/main.ts) | The CLI: arguments, files, the standard input and the interactive mode. |
-| [examples](examples) | Formula files: compound interest, statistics. |
+| [examples](examples) | Formula files: compound interest, statistics, Unicode texts and `FORMAT` (`text.fl`), time functions (`time.fl`), candles (`candles.fl`). |

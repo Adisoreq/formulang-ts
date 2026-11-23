@@ -18,6 +18,8 @@ export interface PreviewState {
   /** Strategies as edited in the preview: definitions, appearance and the values of the proposal. */
   strategies: StrategyDraft[];
   iterationCount: number;
+  /** Frames per second of the Time Context. */
+  framesPerSecond: number;
   candleCount: number;
   seed: number;
   candles: readonly ChartCandle[];
@@ -40,6 +42,7 @@ function initialState(): PreviewState {
     // The empty strategy is inactive until it has a formula
     strategies: STRATEGIES.map((s) => strategyDraftOf(s, s.id !== NEW_FORMULA)),
     iterationCount: 8,
+    framesPerSecond: 20,
     candleCount: 160,
     seed,
     candles: generateCandles(160, seed),

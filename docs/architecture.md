@@ -33,7 +33,7 @@ The direction of the dependencies is checked by ESLint (`no-restricted-imports` 
 | `src/core/utils` | character classes, number formatting and decimal rounding |
 | `src/core/errors.ts`, `operators.ts` | `Errors` (factory of the Core errors), the operator table |
 | `src/facade` | `evaluate`, `Engine`, conversion between FormuLang and JavaScript values |
-| `src/stock` | `Candle`, `StockStandard` and `registerStock`, the Stock context types, `IndicatorRegistry`, `CANDLE` and `INDICATOR`, `StockExecutor` |
+| `src/stock` | `Candle`, `StockStandard` and `registerStock`, the Stock context types, `FormulaRegistry`, `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR` and `LOAD_PATTERN`, `StockExecutor` |
 
 Names that would hide a JavaScript global get the prefix `Fl`: `FlError`, `FlObject`, `FlFunction`. Interfaces keep the `I` prefix of FormuLang.NET (`IValue`), so an interface and its implementation (`Value`) can be imported together.
 
@@ -84,14 +84,14 @@ Numbers are JavaScript `number`s (IEEE 754 binary64), like `double` in FormuLang
 
 ### Context types
 
-The host application chooses the context a formula runs in (pre-execution, step 1); the formula does not select it. `Context` is the Default Context of the Core standard. A context type with its own data derives from `Context` and overrides `loadContextData()` (pre-execution step 2, run once per context). The host updates such constants between executions with `setConstant`, which a formula cannot do. `IterationContext` (Core) and the Stock contexts (`StockContext`, `IndicatorContext`, `PatternContext`, `StrategyContext`) derive from it.
+The host application chooses the context a formula runs in (pre-execution, step 1); the formula does not select it. `Context` is the Default Context of the Core standard. A context type with its own data derives from `Context` and overrides `loadContextData()` (pre-execution step 2, run once per context). The host updates such constants between executions with `setConstant`, which a formula cannot do. `IterationContext` and `TimeContext` (Core) and the Stock contexts (`StockContext`, `IndicatorContext`, `PatternContext`, `StrategyContext`) derive from it. `NOW` is a constant of the context, set in the pre-execution: by every execution of a Default Context, once before the first iteration of an Iteration Context, and for every frame of a Time Context (`Executor.createFrameRunner` parses the formula once and executes one frame per `nextFrame`).
 
 ## Design rules
 
 - **Errors are values.** Formula errors are returned as Error values (`Value.error(...)`), never thrown. Exceptions are reserved for programming errors of the host application (e.g. registering a function twice, an invalid argument template, an invalid candle).
 - **Abstractions first.** A new concept of the standard gets an interface in `src/abstractions` before it gets an implementation.
 - **One standard, one module.** Code that belongs to an extension standard does not go into the core.
-- **Standard identifiers come from the standard.** Error codes and names, operator spellings and binding powers, function signatures and standard identifiers (`core-0.3`) are copied from the standard documents; see [Development](development.md#keeping-the-library-in-sync-with-the-standard).
+- **Standard identifiers come from the standard.** Error codes and names, operator spellings and binding powers, function signatures and standard identifiers (`core-1.0`) are copied from the standard documents; see [Development](development.md#keeping-the-library-in-sync-with-the-standard).
 - **Same results as the reference implementation.** Behavior that the standard leaves open is decided as in FormuLang.NET, and listed in [Conformance](conformance.md#implementation-choices).
 - **Immutable values.** Values, types, errors, tokens and stage results are immutable; only containers (variables) and objects change.
 
@@ -104,7 +104,7 @@ The host application chooses the context a formula runs in (pre-execution, step 
 | Factory | `Value.number/text/...`, `Errors.*`, `Types.*`, `ArgumentTemplate.of/arrayOf/any`, `Context.create`, `Environment.create`. |
 | Composite | Expression trees; `FlObject` is the base of objects, contexts and environments. |
 | Template method | `Context.loadContextData()` and `preExecute()`. |
-| Registry | Functions and standards of the `Environment`, `IndicatorRegistry`. |
+| Registry | Functions and standards of the `Environment`, `FormulaRegistry`. |
 | Facade | `evaluate()` and `Engine` over the pipeline API. |
 | Interpreter | Pratt parser and evaluator over the expression tree. |
 | Table-driven definitions | The Core functions are declared as data (name, overloads with templates and implementations), grouped by category. |
@@ -118,5 +118,6 @@ The behavior of formulas is the same; the API follows the conventions of TypeScr
 - interfaces only where C# has them as contracts; `IProcedure` and the discriminated expression nodes are added, so the evaluator and the parser do not depend on concrete classes;
 - stages are stateless instances; values and stage results are immutable;
 - `IObject.getProperty` returns `undefined` for a missing key instead of throwing;
-- the extension methods of the Stock standard are functions (`registerStock`, `getIndicatorRegistry`) and the `StockExecutor` class;
+- the extension methods of the Stock standard are functions (`registerStock`, `getFormulaRegistry`) and the `StockExecutor` class;
+- the clock of `NOW` is a function (`Environment.clock`, `Date.now` by default) instead of a `TimeProvider`;
 - the JavaScript facade (`evaluate`, `Engine`) has no counterpart in FormuLang.NET.

@@ -153,9 +153,14 @@ def extract(path):
     return methods
 
 
+# Test projects of the library; the tests of the sample applications are not ported
+LIBRARY_PROJECTS = ('FormuLang.NET.Core.Tests', 'FormuLang.NET.Extensions.Stock.Tests')
+
 root = sys.argv[1]
 result = {}
 for path in sorted(glob.glob(os.path.join(root, '*', '*Tests.cs'))):
+    if os.path.basename(os.path.dirname(path)) not in LIBRARY_PROJECTS:
+        continue
     result[os.path.basename(path)] = extract(path)
 json.dump(result, open(sys.argv[2], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 for f, ms in result.items():

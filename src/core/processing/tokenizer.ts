@@ -10,6 +10,8 @@ import {
   isHexDigit,
   isIdentifierStart,
   isLetter,
+  isSurrogate,
+  isTextCharacter,
   isValidSymbol,
   isWhitespace,
   isWordCharacter,
@@ -111,7 +113,10 @@ class LineRun {
     const state = this.state;
     for (this.#index = 0; this.#index < this.line.length; this.#index++) {
       const c = this.line[this.#index]!;
-      if (!isValidSymbol(c)) throw this.syntaxError(`Invalid symbol U+${hex4(c)}`);
+      // Unicode characters are allowed only inside text literals (a surrogate pair is one code point)
+      const allowed =
+        state.mode === TokenType.Text ? isSurrogate(c) || isTextCharacter(c.charCodeAt(0)) : isValidSymbol(c);
+      if (!allowed) throw this.syntaxError(`Invalid symbol U+${hex4(c)}`);
       switch (state.mode) {
         case TokenType.None:
           this.start(c);

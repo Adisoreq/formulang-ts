@@ -43,7 +43,7 @@ export interface IAbstractTree<T> {
  * their functions and extended types, the environment constants and the default environment variables.
  */
 export interface IEnvironment extends IObject {
-  /** Identifiers of the supported standards, e.g. `core-0.3`. */
+  /** Identifiers of the supported standards, e.g. `core-1.0`. */
   readonly standards: readonly string[];
   supports(standard: string): boolean;
   readonly extendedTypes: readonly string[];

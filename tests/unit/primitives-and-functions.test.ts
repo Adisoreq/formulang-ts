@@ -415,8 +415,8 @@ describe("Definitions of the standard", () => {
   it("has the constants and variables of the Core environment", () => {
     const environment = Environment.create();
     const raw = (name: string): unknown => environment.getProperty(name)?.getValue().raw;
-    expect(environment.supports("core-0.3")).toBe(true);
-    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-0.3"]');
+    expect(environment.supports("core-1.0")).toBe(true);
+    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-1.0"]');
     expect(raw("E")).toBe(Math.E);
     expect(raw("PI")).toBe(Math.PI);
     expect(raw("PHI")).toBeCloseTo(1.618033988749894, 14);
@@ -434,9 +434,9 @@ describe("Definitions of the standard", () => {
 
   it("adds a registered standard to STANDARDS", () => {
     const environment = Environment.create();
-    environment.registerStandard("stock-0.1");
-    expect(environment.supports("stock-0.1")).toBe(true);
-    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-0.3", "stock-0.1"]');
+    environment.registerStandard("stock-1.0");
+    expect(environment.supports("stock-1.0")).toBe(true);
+    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-1.0", "stock-1.0"]');
   });
 
   it("rejects a function that is already defined", () =>

@@ -1,0 +1,20 @@
+<#
+  Time functions (core-1.0).
+  A point in time is a Number: Unix time in milliseconds, UTC.
+  NOW is read once, before the formula is executed.
+#>
+
+@time_offset = 60                      # local time: UTC+1 (minutes)
+
+$now = FORMAT_TIME(NOW, "YYYY-MM-DD hh:mm:ss")
+$today = DATE(YEAR(NOW), MONTH(NOW), DAY(NOW))
+$new_year = DATE(YEAR(NOW) + 1, 1, 1)
+$days = ($new_year - $today) / (24 * 60 * 60 * 1000)
+
+$weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+FORMAT("{now} ({day}), {days} days until the new year", {
+    now: $now,
+    day: $weekdays[WEEKDAY(NOW) - 1],
+    days: $days
+})

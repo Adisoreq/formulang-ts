@@ -8,7 +8,7 @@ import {
   serialization_DecimalPlace,
   serialization_MaxArrayPreview,
   serialization_VariablesOfTheExecution,
-} from "./data/Core03.cases.js";
+} from "./data/Core10.cases.js";
 
 // Examples and Errors sections of docs/standards/core/functions/*.md
 describe("Core functions", () => {
@@ -75,7 +75,7 @@ describe("Core functions", () => {
       "INIT",
       "COND_SET",
       "REQUIRE",
-      // Core 0.3
+      // Core 1.0 (since core-0.2)
       "SIN",
       "COS",
       "TAN",
@@ -109,7 +109,7 @@ describe("Core functions", () => {
   it.each(examples)("%j → %s", (formula, expected) => expectResult(run(formula), expected));
 });
 
-describe("Core 0.3 functions", () => {
+describe("Core 1.0 functions (since core-0.2)", () => {
   it.each(functionExamples)("%j → %s", (formula, expected) => expectResult(run(formula), expected));
 
   it.each(functionExamples_WithArrayIndexing1)("@array_indexing = 1: %j → %s", (formula, expected) =>

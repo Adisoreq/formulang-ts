@@ -21,7 +21,6 @@ import {
   arrayIndexing,
   call,
   checkHandler,
-  compareOrdinal,
   del,
   delegateArg,
   anyArg,
@@ -41,6 +40,7 @@ import {
   textArg,
   txt,
 } from "../helpers.js";
+import { codePointLength, compareCodePoints } from "../../utils/chars.js";
 
 /** Largest length of an array (`Array.MaxLength` of .NET). */
 const MAX_ARRAY_LENGTH = 2147483591;
@@ -175,7 +175,7 @@ function sortBy(elements: readonly IValue[], handler: IFunction, context: IConte
   }
   const order = elements.map((_, i) => i);
   if (keys.length > 0 && keys[0]!.type.base === TypeNames.Text) {
-    order.sort((i, j) => compareOrdinal(txt(keys[i]), txt(keys[j])));
+    order.sort((i, j) => compareCodePoints(txt(keys[i]), txt(keys[j])));
   } else {
     order.sort((i, j) => num(keys[i]) - num(keys[j]));
   }
@@ -250,7 +250,7 @@ export const collectionFunctions = (): FlFunction[] => [
   fn(
     "LEN",
     overload((a) => N(arr(a[0]).length), arrayArg("array")),
-    overload((a) => N(txt(a[0]).length), textArg("text")),
+    overload((a) => N(codePointLength(txt(a[0]))), textArg("text")),
   ),
   extreme("MAX", (x, y) => x >= y),
   extreme("MIN", (x, y) => x <= y),
@@ -308,7 +308,7 @@ export const collectionFunctions = (): FlFunction[] => [
     "SORT",
     overload((a) => A([...arr(a[0])].sort((x, y) => num(x) - num(y))), numberArrayArg("numbers")),
     overload(
-      (a) => A([...arr(a[0])].sort((x, y) => compareOrdinal(txt(x), txt(y)))),
+      (a) => A([...arr(a[0])].sort((x, y) => compareCodePoints(txt(x), txt(y)))),
       ArgumentTemplate.arrayOf("texts", Types.Text),
     ),
     overload((a, c) => sortBy(arr(a[0]), del(a[1]), c), arrayArg("elements"), delegateArg("handler")),

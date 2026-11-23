@@ -1,4 +1,4 @@
-// Generated from FormuLang.NET/tests/*/CoreFunctionsTests.cs (Adisoreq/formulang-dotnet@21ce986).
+// Generated from FormuLang.NET/tests/*/CoreFunctionsTests.cs (Adisoreq/formulang-dotnet@7e85d55).
 // Test cases of the reference implementation; regenerate instead of editing by hand.
 
 /** `Examples(string formula, string expected)` */

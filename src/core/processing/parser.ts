@@ -257,7 +257,7 @@ class SequenceParser {
     return new ConstantNode(name);
   }
 
-  /** A procedure call without parentheses: `SET $x 100`, `REQUIRE "core-0.3"`. */
+  /** A procedure call without parentheses: `SET $x 100`, `REQUIRE "core-1+"`. */
   private parseProcedureCall(name: string, parameterCount: number): IExpressionNode {
     const args: IExpressionNode[] = [];
     for (let i = 0; i < parameterCount - 1; i++) args.push(this.parseExpression(BindingPower.Postfix));

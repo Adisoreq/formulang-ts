@@ -5,8 +5,16 @@ out_dir = sys.argv[2]
 os.makedirs(out_dir, exist_ok=True)
 
 
+# Values of the C# constants used as test arguments
+CONSTANTS = {
+    'CoreFunctions.TimeOffsetName': 'time_offset',
+}
+
+
 def ts(value):
     if isinstance(value, dict):
+        if value.get('expr') in CONSTANTS:
+            return ts(CONSTANTS[value['expr']])
         raise Exception('expression argument: ' + json.dumps(value))
     if isinstance(value, bool):
         return 'true' if value else 'false'
@@ -35,7 +43,7 @@ for file, methods in cases.items():
         continue
     base = file.replace('Tests.cs', '')
     lines = [
-        '// Generated from FormuLang.NET/tests/*/' + file + ' (Adisoreq/formulang-dotnet@21ce986).',
+        '// Generated from FormuLang.NET/tests/*/' + file + ' (Adisoreq/formulang-dotnet@7e85d55).',
         '// Test cases of the reference implementation; regenerate instead of editing by hand.',
         '',
     ]

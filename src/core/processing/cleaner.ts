@@ -6,6 +6,8 @@ import { CleanUpResult } from "./results.js";
 const TEXT_DELIMITER = '"';
 const ESCAPE = "\\";
 const COMMENT = "#";
+const SCOPED_COMMENT_OPENING = "<";
+const SCOPED_COMMENT_END = "#>";
 
 interface Segment {
   readonly content: string;
@@ -41,6 +43,50 @@ function splitLine(line: string): Segment[] {
   }
   if (current.length > 0) segments.push({ content: current, isText: insideText });
   return segments;
+}
+
+/**
+ * Replaces every scoped comment (`<# ... #>`) located outside a text literal and outside a line comment with one
+ * new line if it contains a line break, or with one space otherwise (docs/semantics/cleanup.md, "Removing
+ * comments"). Line comments are left for {@link splitLine}. A scoped comment that is not closed (reported by the
+ * validation) is removed up to the end of the formula.
+ */
+function removeScopedComments(formula: string): string {
+  if (!formula.includes("<#")) return formula;
+  let result = "";
+  let insideText = false;
+  let insideLineComment = false;
+  let escape = false;
+  for (let i = 0; i < formula.length; i++) {
+    const c = formula[i]!;
+    if (c === "\n") {
+      insideText = insideLineComment = escape = false;
+      result += c;
+      continue;
+    }
+    if (insideLineComment) {
+      result += c;
+      continue;
+    }
+    if (insideText) {
+      result += c;
+      if (escape) escape = false;
+      else if (c === ESCAPE) escape = true;
+      else if (c === TEXT_DELIMITER) insideText = false;
+      continue;
+    }
+    if (c === SCOPED_COMMENT_OPENING && formula[i + 1] === COMMENT) {
+      const end = formula.indexOf(SCOPED_COMMENT_END, i + 2);
+      const stop = end < 0 ? formula.length : end + 2;
+      result += formula.slice(i, stop).includes("\n") ? "\n" : " ";
+      i = stop - 1;
+      continue;
+    }
+    if (c === COMMENT) insideLineComment = true;
+    else if (c === TEXT_DELIMITER) insideText = true;
+    result += c;
+  }
+  return result;
 }
 
 const isCompressibleOperator = (c: string | undefined): boolean =>
@@ -88,7 +134,8 @@ export class Cleaner implements ICleaner {
   cleanUp(expression: string): CleanUpResult {
     if (expression.trim().length === 0) return new CleanUpResult("", Errors.operationError("Input string is empty."));
     const normalized = expression.replaceAll("\t", " ").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-    const lines = normalized
+    // 2. Comments: scoped comments first, line comments line by line; 3. white spaces
+    const lines = removeScopedComments(normalized)
       .split("\n")
       .map(cleanLine)
       .filter((line) => line.length > 0);

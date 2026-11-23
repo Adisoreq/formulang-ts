@@ -37,6 +37,7 @@ export {
 } from "./processing/nodes.js";
 export { Evaluator, Lambda } from "./processing/evaluator.js";
 export { Executor } from "./processing/executor.js";
+export { FrameRunner } from "./processing/frame-runner.js";
 export {
   ValidationResult,
   CleanUpResult,
@@ -49,10 +50,16 @@ export {
 
 // Structures
 export { Environment } from "./structures/environment.js";
-export { Context, IterationContext } from "./structures/context.js";
+export { Context, IterationContext, TimeContext } from "./structures/context.js";
 export { Standard, StandardVersion, standardIdentifier, type StandardDefinition } from "./structures/standard.js";
 export { AbstractTree, AbstractTreeNode } from "./structures/abstract-tree.js";
-export { EnvironmentVariables, arrayIndexing, suppressErrors } from "./structures/context-variables.js";
+export {
+  EnvironmentConstants,
+  EnvironmentVariables,
+  arrayIndexing,
+  suppressErrors,
+  timeOffset,
+} from "./structures/context-variables.js";
 
 // Standards
 export { CoreStandard, CoreFunctions, CoreProcedures } from "./standards/core-standard.js";

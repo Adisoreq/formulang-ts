@@ -51,7 +51,7 @@ jobs:
         run: |
           npm ci
           npm run typecheck
-          npm start -- -f examples/statistics.fl
+          for f in examples/*.fl; do npm start -- -f "$f"; done
       - name: Web preview
         working-directory: samples/web-preview
         run: |

@@ -6,7 +6,8 @@ import { ComputedConstant } from "../primitives/containers.js";
 import { FlObject } from "../primitives/object.js";
 import { Types } from "../primitives/types.js";
 import { Value } from "../primitives/value.js";
-import { arrayIndexing } from "./context-variables.js";
+import { arrayIndexing, EnvironmentConstants } from "./context-variables.js";
+import { Environment, nowValue } from "./environment.js";
 
 /**
  * Default Context of the Core standard (docs/core/context.md). The context stores the context (`$`) variables,
@@ -43,12 +44,43 @@ export class Context extends FlObject implements IContext {
    */
   preExecute(): void {
     this.loadOnce();
+    // Step 2: NOW is set once for the whole execution
+    if (this.refreshesNowOnPreExecute || !this.hasKey(EnvironmentConstants.now)) this.refreshNow();
     for (const key of this.environment.keys) {
       const container = this.environment.getProperty(key);
       if (container?.containerType === ContainerType.Variable && !this.#environmentVariables.hasKey(key)) {
         this.#environmentVariables.initVariable(key, container.getValue());
       }
     }
+  }
+
+  /**
+   * Whether every {@link preExecute} sets `NOW` to the current time. The Default Context does; the Iteration
+   * Context sets it once before the first iteration, the Time Context once for every frame.
+   */
+  protected get refreshesNowOnPreExecute(): boolean {
+    return true;
+  }
+
+  /**
+   * `NOW` of every execution in this context instead of the clock of the environment, or `undefined`. A context
+   * created by a function for its caller (e.g. a child Indicator Context) uses the `NOW` of the caller.
+   */
+  fixedNow: IValue | undefined;
+
+  /** `NOW` of the current execution, or `undefined` before the first pre-execution. */
+  get now(): IValue | undefined {
+    return this.getProperty(EnvironmentConstants.now)?.getValue();
+  }
+
+  /**
+   * Sets the `NOW` constant of the execution (docs/semantics/pre-execution.md, step 2): to `now`, or to the
+   * time read with {@link Environment.readNow}. The value is stored in the context, so it does not change while
+   * the formula is executed.
+   */
+  protected refreshNow(now?: IValue): void {
+    const value = now ?? this.fixedNow ?? Environment.readNow(this.environment);
+    if (value !== undefined) this.setConstant(EnvironmentConstants.now, value);
   }
 
   /** Loads the constants of the context type (pre-execution, step 2). Runs once per context. */
@@ -122,6 +154,11 @@ export class IterationContext extends Context {
     return this.#previous;
   }
 
+  /** `NOW` is set once before the first iteration and is the same in all iterations. */
+  protected override get refreshesNowOnPreExecute(): boolean {
+    return false;
+  }
+
   protected override loadContextData(): void {
     this.setConstant(IterationContext.countConstant, Value.number(this.count, IterationContext.countConstant));
     this.setContainer(
@@ -142,8 +179,9 @@ export class IterationContext extends Context {
     if (!Number.isInteger(iteration) || iteration < 0 || iteration >= Math.max(this.count, 1)) {
       throw new RangeError(`Iteration ${iteration} is out of range.`);
     }
-    this.loadOnce();
+    this.preExecute(); // loads the context constants before the first iteration
     this.clearVariables();
+    if (iteration === 0) this.refreshNow();
     this.#iteration = iteration;
     this.#previous =
       previous === undefined || previous.type.base === Types.Error.base
@@ -151,5 +189,118 @@ export class IterationContext extends Context {
         : previous;
     this.setConstant(IterationContext.previousConstant, this.#previous);
     this.preExecute();
+  }
+}
+
+/**
+ * Time Context of the Core standard (docs/core/context.md, "Time Context"): the host application executes the same
+ * formula repeatedly as time passes, once for every **frame** (an animation frame, a simulation step, a real-time
+ * measurement). Constants: `TIME_S`, `TIME_MS`, `DTIME_S`, `DTIME_MS`, `FRAME` (follows `@array_indexing`) and
+ * `PREV` (result of the previous frame).
+ *
+ * Run the frames with `Executor.createFrameRunner` (the formula is parsed once), or call {@link beginFrame} before
+ * every execution. Every frame starts with no context variables and with the environment variables of the
+ * environment; the only state passed from one frame to the next is `PREV`. `NOW` is set again for every frame.
+ */
+export class TimeContext extends Context {
+  static readonly timeSecondsConstant = "TIME_S";
+  static readonly timeMillisecondsConstant = "TIME_MS";
+  static readonly deltaSecondsConstant = "DTIME_S";
+  static readonly deltaMillisecondsConstant = "DTIME_MS";
+  static readonly frameConstant = "FRAME";
+  static readonly previousConstant = "PREV";
+
+  #frame = 0;
+  #timeSeconds = 0;
+  #deltaSeconds = 0;
+  #previous: IValue = Value.null(TimeContext.previousConstant);
+
+  protected constructor(environment: IEnvironment) {
+    super(environment, ContextType.Persistent);
+  }
+
+  /** A new Time Context positioned at the first frame (`TIME_S` = 0). */
+  static override create(environment: IEnvironment): TimeContext {
+    const context = new TimeContext(environment);
+    context.preExecute();
+    return context;
+  }
+
+  /** Zero-based index of the current frame. `FRAME` is this value plus `@array_indexing`. */
+  get frame(): number {
+    return this.#frame;
+  }
+
+  /** Time from the start of the first frame to the start of the current frame, in seconds (`TIME_S`). */
+  get timeSeconds(): number {
+    return this.#timeSeconds;
+  }
+
+  /** Time from the start of the previous frame to the start of the current frame, in seconds (`DTIME_S`). */
+  get deltaSeconds(): number {
+    return this.#deltaSeconds;
+  }
+
+  /** Result of the previous frame (`PREV`); `null` in the first frame. */
+  get previous(): IValue {
+    return this.#previous;
+  }
+
+  /** `NOW` is set by {@link beginFrame}, once for every frame. */
+  protected override get refreshesNowOnPreExecute(): boolean {
+    return false;
+  }
+
+  protected override loadContextData(): void {
+    this.#setTimeConstants();
+    this.setContainer(
+      new ComputedConstant(TimeContext.frameConstant, Types.Number, () =>
+        Value.number(this.#frame + arrayIndexing(this), TimeContext.frameConstant),
+      ),
+    );
+    this.setConstant(TimeContext.previousConstant, this.#previous);
+  }
+
+  /**
+   * Prepares the frame with the zero-based `frame` index: removes the context variables and the overridden
+   * environment variables, sets the time constants, `PREV` and `NOW`, and runs the pre-execution.
+   *
+   * @param timeSeconds Total time from the start of the first frame, in seconds. Never decreases.
+   * @param deltaSeconds Time from the start of the previous frame, in seconds. Never negative.
+   * @param previous Result of the previous frame; `undefined` (or an Error) is stored as `null`.
+   * @param now `NOW` of the frame (Unix time in milliseconds, UTC), or `undefined` to read the clock of the
+   * environment.
+   * @throws {RangeError} for a negative frame, time or delta, or a time that decreases.
+   */
+  beginFrame(frame: number, timeSeconds: number, deltaSeconds: number, previous?: IValue, now?: number): void {
+    if (!Number.isInteger(frame) || frame < 0) throw new RangeError("The frame must be a whole number >= 0.");
+    if (!(timeSeconds >= 0)) throw new RangeError("The time of a frame must not be negative.");
+    if (!(deltaSeconds >= 0)) throw new RangeError("The delta time of a frame must not be negative.");
+    if (frame > 0 && timeSeconds < this.#timeSeconds) throw new RangeError("The time of a frame never decreases.");
+
+    this.preExecute(); // loads the context constants before the first frame
+    this.clearVariables();
+
+    this.#frame = frame;
+    this.#timeSeconds = timeSeconds;
+    this.#deltaSeconds = deltaSeconds;
+    this.#previous =
+      previous === undefined || previous.type.base === Types.Error.base
+        ? Value.null(TimeContext.previousConstant)
+        : previous;
+
+    this.#setTimeConstants();
+    this.setConstant(TimeContext.previousConstant, this.#previous);
+    this.refreshNow(now === undefined ? undefined : nowValue(now));
+
+    this.preExecute();
+  }
+
+  #setTimeConstants(): void {
+    const set = (name: string, value: number): void => this.setConstant(name, Value.number(value, name));
+    set(TimeContext.timeSecondsConstant, this.#timeSeconds);
+    set(TimeContext.timeMillisecondsConstant, this.#timeSeconds * 1000);
+    set(TimeContext.deltaSecondsConstant, this.#deltaSeconds);
+    set(TimeContext.deltaMillisecondsConstant, this.#deltaSeconds * 1000);
   }
 }

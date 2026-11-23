@@ -6,3 +6,4 @@ package-lock.json
 *.md
 samples/**/dist
 tests/conformance/data
+tests/conformance/spec

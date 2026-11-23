@@ -9,9 +9,10 @@ import type {
 } from "../../abstractions/processing.js";
 import type { IContext, IEnvironment } from "../../abstractions/structures.js";
 import { Value } from "../primitives/value.js";
-import { Context, type IterationContext } from "../structures/context.js";
+import { Context, type IterationContext, type TimeContext } from "../structures/context.js";
 import { Cleaner } from "./cleaner.js";
 import { Evaluator } from "./evaluator.js";
+import { FrameRunner } from "./frame-runner.js";
 import { Parser } from "./parser.js";
 import { ExecutionResult, IterationExecutionResult } from "./results.js";
 import { Tokenizer } from "./tokenizer.js";
@@ -102,6 +103,40 @@ export class Executor {
       results.push(result);
       if (!result.successful && stopOnError) break;
       previous = result.value;
+    }
+    return new IterationExecutionResult(results);
+  }
+
+  /**
+   * Prepares the execution of a formula in the frames of a Time Context (docs/core/context.md, "Time Context").
+   * The formula is validated, cleaned up, tokenized and parsed only once; every `FrameRunner.nextFrame` executes
+   * one frame.
+   */
+  createFrameRunner(formula: string, context: TimeContext): FrameRunner {
+    context.beginFrame(0, 0, 0);
+    const prepared = this.prepare(formula, context);
+    return prepared instanceof ExecutionResult
+      ? new FrameRunner((parsing, c) => this.#evaluate(parsing, c), context, undefined, prepared)
+      : new FrameRunner((parsing, c) => this.#evaluate(parsing, c), context, prepared, undefined);
+  }
+
+  /**
+   * Executes the formula once for every frame (time and delta in seconds, optional `NOW` in milliseconds). The
+   * formula is parsed only once. By default the frames stop at the first Error; with `stopOnError = false` every
+   * frame is executed.
+   */
+  executeFrames(
+    formula: string,
+    context: TimeContext,
+    frames: Iterable<{ readonly timeSeconds: number; readonly deltaSeconds: number; readonly now?: number }>,
+    stopOnError = true,
+  ): IterationExecutionResult {
+    const runner = this.createFrameRunner(formula, context);
+    const results: ExecutionResult[] = [];
+    for (const frame of frames) {
+      const result = runner.nextFrame(frame.timeSeconds, frame.deltaSeconds, frame.now);
+      results.push(result);
+      if (runner.preparationError !== undefined || (!result.successful && stopOnError)) break;
     }
     return new IterationExecutionResult(results);
   }

@@ -1,9 +1,16 @@
 import { For, Show, createMemo } from "solid-js";
 import { type ChartMarker, type ChartPattern, StockChart } from "../chart/StockChart";
 import { type Diagnostics, type PatternRun, type StrategyRun, proposalOf } from "../model/engine";
-import { MAX_PATTERN_LENGTH, initials, patternProblems, strategyProblems } from "../model/patterns-strategies";
+import {
+  MAX_PATTERN_LENGTH,
+  initials,
+  patternLength,
+  patternProblems,
+  strategyProblems,
+} from "../model/patterns-strategies";
 import { patternIndex, resetPattern, resetStrategy, setState, state, strategyIndex } from "../model/state";
 import { Problems } from "./Output";
+import { ParameterTable, ParameterValues } from "./Parameters";
 
 const COLORS = { green: "#2fbf71", red: "#e5534b" } as const;
 
@@ -18,11 +25,12 @@ const setStrategy =
   (...path) =>
     (setState as Setter)("strategies", index, ...path);
 
-function ProblemList(props: { readonly problems: readonly string[] }) {
+function ProblemList(props: { readonly problems: readonly string[]; readonly note?: string }) {
   return (
     <Show when={props.problems.length > 0}>
       <ul class="config-problems" role="alert">
         <For each={props.problems}>{(problem) => <li>{problem}</li>}</For>
+        <Show when={props.note}>{(note) => <li class="muted">{note()}</li>}</Show>
       </ul>
     </Show>
   );
@@ -40,6 +48,15 @@ export function PatternEditor() {
         <label class="field grow">
           <span class="field-label">Name</span>
           <input type="text" value={pattern().name} onInput={(e) => setPattern("name", text(e))} />
+        </label>
+        <label class="field">
+          <span class="field-label">Registry id</span>
+          <input
+            type="text"
+            class="mono"
+            value={pattern().patternId}
+            onInput={(e) => setPattern("patternId", text(e))}
+          />
         </label>
         <label class="field">
           <span class="field-label">Type</span>
@@ -68,9 +85,20 @@ export function PatternEditor() {
       </div>
       <p class="config-note">
         The formula returns <code>true</code> for the candle where the pattern ends; its rectangle covers that candle
-        and the {pattern().length - 1} before it. The color and the label are set below the chart.
+        and the {pattern().length - 1} before it. The color and the label are set below the chart. Other formulas load
+        it with <code>LOAD_PATTERN("{pattern().patternId}")</code>, with the default values of its parameters.
       </p>
-      <ProblemList problems={patternProblems(pattern())} />
+
+      <ParameterTable
+        parameters={pattern().parameters}
+        set={(...path) => setPattern("parameters", ...path)}
+        kind="pattern"
+      />
+
+      <ProblemList
+        problems={patternProblems(pattern(), state.patterns)}
+        note="Until they are fixed, the pattern is not in the registry."
+      />
       <div class="config-actions">
         <button type="button" class="link" onClick={() => resetPattern(pattern().id)}>
           restore the definition of the example
@@ -82,7 +110,7 @@ export function PatternEditor() {
 
 /** Chart with a rectangle around every occurrence, the appearance of the pattern and the occurrences. */
 export function PatternOutput(props: { readonly run: PatternRun; readonly diagnostics: Diagnostics }) {
-  const length = () => (patternProblems(pattern()).length === 0 ? pattern().length : 1);
+  const length = () => patternLength(pattern());
   const patterns = createMemo<ChartPattern[]>(() =>
     props.run.indices.map((index) => ({
       from: Math.max(0, index - length() + 1),
@@ -129,6 +157,7 @@ export function PatternOutput(props: { readonly run: PatternRun; readonly diagno
           )}
         </For>
       </ol>
+      <ParameterValues parameters={pattern().parameters} set={(...path) => setPattern("parameters", ...path)} />
     </>
   );
 }

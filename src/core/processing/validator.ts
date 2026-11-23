@@ -6,11 +6,11 @@ import { Errors } from "../errors.js";
 import { TypeNames } from "../primitives/types.js";
 import { SerializationVariables } from "../serialization/serializer.js";
 import { CoreStandard } from "../standards/core-standard.js";
-import { EnvironmentVariables } from "../structures/context-variables.js";
-import { displayCharacter, isValidSymbol } from "../utils/chars.js";
+import { EnvironmentConstants, EnvironmentVariables } from "../structures/context-variables.js";
+import { displayCharacter, isTextCharacter, isValidSymbol } from "../utils/chars.js";
 import { ValidationResult } from "./results.js";
 
-type Mode = "code" | "text" | "comment";
+type Mode = "code" | "text" | "comment" | "scopedComment";
 
 interface Position {
   readonly line: number;
@@ -57,6 +57,11 @@ function checkEnvironment(environment: IEnvironment, errors: IError[]): void {
       errors.push(missingConstant(name, TypeNames.Number));
     }
   }
+  const now = read(environment, EnvironmentConstants.now, ContainerType.Constant);
+  if (now?.type.base !== TypeNames.Number) errors.push(missingConstant(EnvironmentConstants.now, TypeNames.Number));
+  else if (typeof now.raw === "number" && Math.floor(now.raw) !== now.raw) {
+    errors.push(Errors.environmentError(`Environment constant "${EnvironmentConstants.now}" must be a whole number.`));
+  }
   if (read(environment, "NULL", ContainerType.Constant)?.type.base !== TypeNames.Null) {
     errors.push(missingConstant("NULL", TypeNames.Null));
   }
@@ -64,6 +69,7 @@ function checkEnvironment(environment: IEnvironment, errors: IError[]): void {
   checkBooleanConstant(environment, "FALSE", false, errors);
   checkWholeNumberVariable(environment, EnvironmentVariables.arrayIndexing, errors);
   checkVariable(environment, EnvironmentVariables.suppressErrors, TypeNames.Boolean, errors);
+  checkWholeNumberVariable(environment, EnvironmentVariables.timeOffset, errors);
   // Serialization variables
   checkWholeNumberVariable(environment, SerializationVariables.decimalPlace, errors);
   checkVariable(environment, SerializationVariables.splitArray, TypeNames.Boolean, errors);
@@ -99,13 +105,19 @@ function scanFormula(formula: string, errors: IError[]): void {
   let escape = false;
   const delimiters: { symbol: string; position: Position }[] = [];
   let textStart: Position = { line: 0, column: 0 };
+  let commentStart: Position = { line: 0, column: 0 };
   let line = 1;
   let column = 0;
+  let i = 0;
 
-  for (let i = 0; i < formula.length; i++) {
-    const c = formula[i]!;
+  while (i < formula.length) {
+    // Characters are Unicode code points: a surrogate pair is one character, a lone surrogate is U+FFFD
+    let value = formula.codePointAt(i)!;
+    i += value > 0xffff ? 2 : 1;
+    if (value >= 0xd800 && value <= 0xdfff) value = 0xfffd;
+    const c = String.fromCodePoint(value);
     const lineBreak = c === "\n" || c === "\r";
-    if (c === "\r" && formula[i + 1] === "\n") i++;
+    if (c === "\r" && formula[i] === "\n") i++;
     if (!lineBreak) column++;
     const position: Position = { line, column };
 
@@ -117,7 +129,19 @@ function scanFormula(formula: string, errors: IError[]): void {
       }
       continue;
     }
-    if (!lineBreak && !isValidSymbol(c)) {
+    if (mode === "scopedComment") {
+      if (lineBreak) {
+        line++;
+        column = 0;
+      } else if (c === "#" && formula[i] === ">") {
+        i++;
+        column++;
+        mode = "code";
+      }
+      continue;
+    }
+    const allowed = mode === "text" ? isTextCharacter(value) : value < 128 && isValidSymbol(c);
+    if (!lineBreak && !allowed) {
       errors.push(Errors.syntaxError(`Invalid symbol "${displayCharacter(c)}" at ${at(position)}.`));
       continue;
     }
@@ -141,8 +165,16 @@ function scanFormula(formula: string, errors: IError[]): void {
       else if (c === "\\") escape = true;
       continue;
     }
-    // Code
+    // Code: only ASCII symbols reach this point
     switch (c) {
+      case "<":
+        if (formula[i] === "#") {
+          i++;
+          column++;
+          commentStart = position;
+          mode = "scopedComment";
+        }
+        break;
       case "#":
         mode = "comment";
         break;
@@ -171,6 +203,9 @@ function scanFormula(formula: string, errors: IError[]): void {
     }
   }
   if (mode === "text") errors.push(Errors.syntaxError(`Text literal is not closed at ${at(textStart)}.`));
+  if (mode === "scopedComment") {
+    errors.push(Errors.syntaxError(`Scoped comment is not closed at ${at(commentStart)}.`));
+  }
   // The innermost unclosed delimiter first, like a stack
   for (const { symbol, position } of [...delimiters].reverse()) {
     errors.push(Errors.syntaxError(`Unclosed "${symbol}" at ${at(position)}.`));

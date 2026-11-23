@@ -1,7 +1,7 @@
 {
   "name": "formulang-ts",
-  "version": "0.1.0",
-  "description": "Modular TypeScript implementation of the FormuLang formula language standard (Core 0.3, Stock 0.1).",
+  "version": "1.0.0",
+  "description": "Modular TypeScript implementation of the FormuLang formula language standard (Core 1.0, Stock 1.0).",
   "keywords": [
     "formulang",
     "formula",
@@ -16,7 +16,10 @@
     "patterns",
     "indicators",
     "trading",
-    "strategies"
+    "strategies",
+    "formula-language",
+    "time",
+    "unicode"
   ],
   "author": "Adrian Piznal",
   "license": "MIT",
@@ -32,6 +35,10 @@
   "sideEffects": false,
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

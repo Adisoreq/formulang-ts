@@ -1,4 +1,4 @@
-// Generated from FormuLang.NET/tests/*/Core03Tests.cs (Adisoreq/formulang-dotnet@21ce986).
+// Generated from FormuLang.NET/tests/*/Core10Tests.cs (Adisoreq/formulang-dotnet@7e85d55).
 // Test cases of the reference implementation; regenerate instead of editing by hand.
 
 /** `FunctionExamples(string formula, string expected)` */
@@ -176,4 +176,100 @@ export const serialization_VariablesOfTheExecution = [
   ["@decimal_place = 2\nTEXT(PI)", "3.14"],
   ["@decimal_place = 2\nJOIN([1, 2.5], \"; \")", "1.00; 2.50"],
   ["@max_array_preview = 2\nTEXT(SEQ(10))", "[0, ..., 9]"],
+] as const;
+
+/** `ScopedComments(string formula, string expected)` */
+export const scopedComments = [
+  ["$a = 14 # line\n$b = <# scoped #> 24\n\n<#\nHey!\nmulti-line\n#>\n\n$a + $b", "38"],
+  ["ADD(1, <# the second argument #> 2)", "3"],
+  ["[1<#x#>, 2]", "[1, 2]"],
+  ["$a = 1 <# this comment\nspans two lines #> $b = 2\n$a + $b", "3"],
+  ["<# a <# b #> 5", "5"],
+  ["$x = 1 #> not a closing marker\n$x", "1"],
+  ["\"<# not a comment #>\"", "<# not a comment #>"],
+  ["$b = <# ( \" #> 24\n$b", "24"],
+] as const;
+
+/** `ScopedComments_CleanUp(string formula, string expected)` */
+export const scopedComments_CleanUp = [
+  ["$y = <# Scoped comment #> 2", "$y=2"],
+  ["<#\nMulti-line\ncomment\n#>\n$x ^ $y", "$x^$y"],
+  ["1<#x#>2", "1 2"],
+] as const;
+
+/** `UnicodeTexts(string formula, string expected)` */
+export const unicodeTexts = [
+  ["\"Zażółć gęślą jaźń\"", "Zażółć gęślą jaźń"],
+  ["LEN(\"żółw\")", "4"],
+  ["LEN(\"a😀b\")", "3"],
+  ["REVERSE(\"a😀ą\")", "ą😀a"],
+  ["SUBSTR(\"łódź\", 1, 2)", "ód"],
+  ["FIND(\"źdźbło\", \"b\")", "3"],
+  ["SPLIT(\"a😀\", \"\")", "[\"a\", \"😀\"]"],
+  ["UPPERCASE(\"żółw\")", "ŻÓŁW"],
+  ["LOWERCASE(\"ĄĘÓ\")", "ąęó"],
+  ["\"é\" == \"é\"", "false"],
+  ["1 # komentarz: zażółć", "1"],
+] as const;
+
+/** `Format(string formula, string expected)` */
+export const format = [
+  ["FORMAT(\"Mam {} jablek i {} gruszek.\", [10, 5])", "Mam 10 jablek i 5 gruszek."],
+  ["FORMAT(\"{1} before {0}\", [\"a\", \"b\"])", "b before a"],
+  ["FORMAT(\"{0}{0}{0}\", [\"ha\"])", "hahaha"],
+  ["FORMAT(\"Price: {:.2} zł\", [12.5])", "Price: 12.50 zł"],
+  ["FORMAT(\"{:.0}%\", [99.5])", "100%"],
+  ["FORMAT(\"Set: {{{}}}\", [7])", "Set: {7}"],
+  ["FORMAT(\"{} and {}\", [[1, 2], true])", "[1, 2] and true"],
+  ["FORMAT(\"No placeholders\", [1])", "No placeholders"],
+  ["FORMAT(\"{} {}\", [1])", "INVALID_INDEX_ERROR"],
+  ["FORMAT(\"{} {1}\", [1, 2])", "OPERATION_ERROR"],
+  ["FORMAT(\"{:.2}\", [\"text\"])", "OPERATION_ERROR"],
+  ["FORMAT(\"{\", [1])", "OPERATION_ERROR"],
+  ["FORMAT(\"}\", [1])", "OPERATION_ERROR"],
+  ["FORMAT(\"{ 0 }\", [1])", "OPERATION_ERROR"],
+  ["FORMAT(\"{name} ma {age} lat\", { name: \"Ola\", age: 24 })", "Ola ma 24 lat"],
+  ["FORMAT(\"{x:.1}, {y:.1}\", { x: 1, y: 2.25 })", "1.0, 2.3"],
+  ["FORMAT(\"{name}\", { })", "INVALID_KEY_ERROR"],
+  ["FORMAT(\"{}\", { a: 1 })", "OPERATION_ERROR"],
+  ["FORMAT(\"{}\", [ERROR(\"x\")])", "CUSTOM_ERROR"],
+] as const;
+
+/** `TimeFunctions(string formula, string expected)` */
+export const timeFunctions = [
+  ["[YEAR(NOW), MONTH(NOW), DAY(NOW), WEEKDAY(NOW)]", "[2026, 11, 23, 1]"],
+  ["[HOUR(NOW), MINUTE(NOW), SECOND(NOW), MILLISECOND(NOW)]", "[10, 51, 20, 123]"],
+  ["[YEAR(0), MONTH(0), DAY(0), WEEKDAY(0)]", "[1970, 1, 1, 4]"],
+  ["[YEAR(-1), MONTH(-1), DAY(-1), HOUR(-1), MILLISECOND(-1), WEEKDAY(-1)]", "[1969, 12, 31, 23, 999, 3]"],
+  ["YEAR(1.5)", "OPERATION_ERROR"],
+  ["YEAR(1e20)", "OPERATION_ERROR"],
+  ["DATE(1970, 1, 1)", "0"],
+  ["DATE(2026, 11, 23)", "1795392000000"],
+  ["DATE(2026, 11, 23, 10, 51, 20, 123)", "1795431080123"],
+  ["DATE(2024, 2, 29)", "1709164800000"],
+  ["DATE(2023, 2, 29)", "OPERATION_ERROR"],
+  ["DATE(2026, 13, 1)", "OPERATION_ERROR"],
+  ["DATE(2026, 1, 1.5)", "OPERATION_ERROR"],
+  ["DATE(YEAR(NOW), MONTH(NOW), DAY(NOW), HOUR(NOW), MINUTE(NOW), SECOND(NOW), MILLISECOND(NOW)) == NOW", "true"],
+  ["FORMAT_TIME(NOW, \"YYYY-MM-DD[T]hh:mm:ss.iii\")", "2026-11-23T10:51:20.123"],
+  ["FORMAT_TIME(NOW, \"DD/MM/YYYY, hh:mm\")", "23/11/2026, 10:51"],
+  ["FORMAT_TIME(NOW, \"YYYY-MM-DDThh:mm\")", "2026-11-23T10:51"],
+  ["FORMAT_TIME(0, \"[Year] YYYY\")", "Year 1970"],
+  ["FORMAT_TIME(0, \"Y-M-D\")", "Y-M-D"],
+  ["FORMAT_TIME(0, \"[[YYYY]]\")", "[1970]"],
+  ["FORMAT_TIME(0, \"[YYYY\")", "OPERATION_ERROR"],
+  ["$a = NOW\n$a == NOW", "true"],
+] as const;
+
+/** `TimeFunctions_UseTimeOffset(string formula, string expected)` */
+export const timeFunctions_UseTimeOffset = [
+  ["[MONTH(1709249400000), DAY(1709249400000), HOUR(1709249400000), WEEKDAY(1709249400000)]", "[3, 1, 0, 5]"],
+  ["DATE(2026, 11, 23, 10, 51, 20, 123)", "1795427480123"],
+  ["FORMAT_TIME(1795431080123, \"hh:mm\")", "11:51"],
+] as const;
+
+/** `Validation_NowAndTimeOffsetAreWholeNumbers(string name, double value, string message)` */
+export const validation_NowAndTimeOffsetAreWholeNumbers = [
+  ["NOW", 0.5, "Environment constant \"NOW\" must be a whole number."],
+  ["time_offset", 1.5, "Environment variable \"time_offset\" must be a whole number."],
 ] as const;

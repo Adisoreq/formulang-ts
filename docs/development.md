@@ -58,7 +58,7 @@ Values defined by the standard are copied from it, never chosen in the library:
 
 - error codes and names ([Core errors](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/errors/README.md)) – `src/core/errors.ts`;
 - operator spellings, binding powers and associativity ([Operator parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/operator-parsing.md#binding-power)) – `src/core/operators.ts`;
-- standard identifiers (`core-0.3`, `stock-0.1`), environment constants and variables ([Core](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md)).
+- standard identifiers (`core-1.0`, `stock-1.0`), environment constants and variables ([Core](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md)).
 
 If the implementation needs something the standard does not define (for example a new error), propose it in the standard first, then implement it.
 
@@ -70,6 +70,14 @@ Most standard documents contain examples with an input and an expected result. T
 - a test that fails because the standard changed is a deviation: add it to [Conformance](conformance.md) instead of changing the expected result.
 
 When FormuLang.NET adds test cases, regenerate the tables in `tests/conformance/data` with the scripts in [scripts/dotnet-cases](../scripts/dotnet-cases/README.md).
+
+The standard also has language-independent conformance tests (JSON, [`tests/`](https://github.com/Adisoreq/FormuLang/tree/main/tests) of the standard repository). Copy them into `tests/conformance/spec` with
+
+```bash
+node scripts/sync-conformance.mjs ../FormuLang
+```
+
+The script records the revision in `tests/conformance/spec/REVISION`; [spec.test.ts](../tests/conformance/spec.test.ts) runs every case. Do not edit the copied files: change the standard and copy them again. A case that disagrees with the algorithm of the standard is listed in the known deviations of `spec.test.ts` and in [Conformance](conformance.md#known-deviations).
 
 ### 4. Same results as FormuLang.NET
 
@@ -90,18 +98,24 @@ For a change of the library only (refactoring, performance, API), the standard i
 
 | | Scheme | Example |
 | :-- | :----- | :------ |
-| Standard | `<name>-<major>.<minor>` | `core-0.3` |
-| Library | [SemVer](https://semver.org) | `0.1.0` |
+| Standard | `<name>-<major>.<minor>` | `core-1.0` |
+| Library | [SemVer](https://semver.org) | `1.0.0` |
 
 The library version is independent of the standard version: a library release can fix bugs without any change of the standard. Every release lists the standards it supports in the [CHANGELOG](../CHANGELOG.md), and `IEnvironment.standards` reports the same identifiers at runtime.
 
-While the library is `0.x`, any release can contain breaking API changes.
+From `1.0.0` on, a breaking change of the public API (anything exported by the three entry points) needs a new major version. A new minor version of a standard (`core-1.1`) is backward compatible, so it is implemented in a minor version of the library.
 
 ## Releasing
 
-1. Update the version in `package.json` and the [CHANGELOG](../CHANGELOG.md).
-2. `npm run check` (also run by `prepublishOnly`).
-3. `npm publish`.
+Releases are published to [npm](https://www.npmjs.com/package/formulang-ts) by the [Release workflow](../.github/workflows/release.yml) when a version tag is pushed:
+
+1. Update the version in `package.json` (and in the lock files: `npm install --package-lock-only`, also in the samples) and the [CHANGELOG](../CHANGELOG.md) (the date of the release).
+2. `npm run check` (also run by `prepublishOnly` and by the workflow).
+3. Commit, then create and push the tag `v<version>`, e.g. `git tag v1.0.0 && git push origin v1.0.0`.
+
+The workflow checks that the tag matches the version of `package.json`, runs `npm run check`, publishes the package with [provenance](https://docs.npmjs.com/generating-provenance-statements) and creates a GitHub release with the packed archive. It needs the repository secret `NPM_TOKEN` (an npm access token that can publish `formulang-ts`) in the `npm` environment; after the first publication the token can be replaced with [trusted publishing](https://docs.npmjs.com/trusted-publishers).
+
+To check the content of the package before a release: `npm pack --dry-run`.
 
 ## Extensions
 

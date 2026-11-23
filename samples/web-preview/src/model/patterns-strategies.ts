@@ -1,13 +1,17 @@
 /**
  * Patterns and strategies edited in the preview: mutable copies of the example configurations.
  */
+import { type IndicatorParameterDraft, parameterDraftsOf, registryProblems } from "./indicators";
 import type { PatternColor, PatternConfig, PatternType, StrategyConfig } from "./types";
 
 export interface PatternDraft {
   /** Key of the pattern in the preview (not editable). */
   readonly id: string;
+  /** Identifier in the registry: `LOAD_PATTERN("ENGULFING")`. */
+  patternId: string;
   name: string;
   description: string;
+  parameters: IndicatorParameterDraft[];
   type: PatternType;
   /** Number of candles of the pattern, ending with the candle where it is detected. */
   length: number;
@@ -50,7 +54,7 @@ export function initials(name: string): string {
 }
 
 export function patternDraftOf(config: PatternConfig): PatternDraft {
-  return { ...config, showLabel: true };
+  return { ...config, parameters: parameterDraftsOf(config.parameters), showLabel: true };
 }
 
 export function strategyDraftOf(config: StrategyConfig, active = true): StrategyDraft {
@@ -67,8 +71,24 @@ export function strategyDraftOf(config: StrategyConfig, active = true): Strategy
 
 export const MAX_PATTERN_LENGTH = 20;
 
-export function patternProblems(draft: PatternDraft): string[] {
-  const problems: string[] = [];
+/** Number of candles of the rectangle of a pattern: its length, or 1 for a length that is not valid. */
+export function patternLength(draft: PatternDraft): number {
+  return Number.isInteger(draft.length) && draft.length >= 1 && draft.length <= MAX_PATTERN_LENGTH ? draft.length : 1;
+}
+
+/**
+ * Problems of the definition of a pattern. A pattern with problems is not in the registry, so `LOAD_PATTERN(id)`
+ * returns `INVALID_KEY_ERROR` for it.
+ *
+ * @param all Every pattern of the preview, to check that the registry id is unique.
+ */
+export function patternProblems(draft: PatternDraft, all: readonly PatternDraft[] = []): string[] {
+  const problems = registryProblems(
+    draft.patternId,
+    "pattern",
+    all.filter((other) => other !== draft).map((other) => other.patternId),
+    draft.parameters,
+  );
   if (draft.name.trim().length === 0) problems.push("The pattern has no name.");
   if (!Number.isInteger(draft.length) || draft.length < 1 || draft.length > MAX_PATTERN_LENGTH) {
     problems.push(`The number of candles must be a whole number from 1 to ${MAX_PATTERN_LENGTH}.`);

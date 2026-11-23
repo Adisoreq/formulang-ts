@@ -1,6 +1,6 @@
 {
   "name": "formulang-calculator-cli",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Sample of FormuLang-TS: executes formulas from the command line.",
   "type": "module",

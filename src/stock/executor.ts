@@ -103,6 +103,17 @@ export class StockExecutor {
     return { indices, error, successful: error.isSuccess(), iterations: run };
   }
 
+  /**
+   * Runs a pattern formula once per candle and returns its whole series, as `LOAD_PATTERN` does
+   * (docs/standards/stock/functions/LOAD_PATTERN.md): an Array of `N` Booleans; the Error of an iteration; or
+   * `OPERATION_ERROR` if an iteration returns a value that is not a Boolean.
+   */
+  executePatternSeries(formula: string, context: PatternContext): IValue {
+    const result = this.executePattern(formula, context, true);
+    if (!result.successful) return Value.error(result.error);
+    return Value.array(result.iterations.values);
+  }
+
   /** Runs a strategy formula once per candle; every result must be a Number, which is clamped to [-1, 1]. */
   executeStrategy(formula: string, context: StrategyContext, stopOnError = true): StrategyResult {
     const run = this.executor.executeIterations(formula, context, stopOnError);

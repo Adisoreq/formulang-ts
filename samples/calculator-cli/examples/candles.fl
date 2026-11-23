@@ -1,0 +1,13 @@
+# Candles of the Stock standard (stock-1.0): a bullish engulfing pattern in three candles
+
+$candles = MAP([
+    { open: 10, high: 12.5, low: 9.5, close: 12 },
+    { open: 12, high: 12.5, low: 10.8, close: 11 },     <# bearish #>
+    { open: 10.5, high: 13.2, low: 10.4, close: 13 }    <# bullish, covers the previous body #>
+], (c) => CANDLE(c))
+
+$prev = $candles[1]
+$curr = $candles[2]
+$engulfing = AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), AND($curr.open <= $prev.close, $curr.close >= $prev.open)))
+
+FORMAT("Bullish: {}, engulfing at the last candle: {}", [MAP($candles, (c) => IS_BULLISH(c)), $engulfing])

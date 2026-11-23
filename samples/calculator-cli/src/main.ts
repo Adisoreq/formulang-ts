@@ -13,9 +13,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { Environment, Executor } from "formulang-ts";
+import { registerStock } from "formulang-ts/stock";
 
-// A basic Core environment: no constants or variables besides the ones required by the standard
+// The Core environment with the Stock standard (CANDLE, IS_BULLISH, IS_BEARISH): no constants or variables besides
+// the ones required by the standards. NOW is read from the system clock for every execution.
 const environment = Environment.create();
+registerStock(environment);
 const executor = Executor.create();
 
 const red = (text: string): string => (process.stderr.isTTY ? `\x1b[31m${text}\x1b[0m` : text);
@@ -41,7 +44,8 @@ async function interactive(): Promise<void> {
   rl.prompt();
   for await (const line of rl) {
     if (lines.length === 0 && line.trim() === "exit") break;
-    if (line.length > 0) lines.push(line);
+    // An empty line inside an unclosed scoped comment (<# ... #>) does not execute the formula
+    if (line.length > 0 || isInsideScopedComment(lines)) lines.push(line);
     else if (lines.length > 0) {
       run(lines.join("\n"));
       lines.length = 0;
@@ -52,8 +56,15 @@ async function interactive(): Promise<void> {
   rl.close();
 }
 
+function isInsideScopedComment(lines: readonly string[]): boolean {
+  const text = lines.join("\n");
+  const open = text.lastIndexOf("<#");
+  return open >= 0 && text.indexOf("#>", open + 2) < 0;
+}
+
 function help(): void {
   console.log(`Executes FormuLang formulas and prints the result.
+Standards: ${environment.standards.join(", ")}
 
 Usage:
   calculator "<formula>"      execute the formula given as an argument
@@ -61,6 +72,7 @@ Usage:
   calculator < <file>         execute a formula read from the standard input
   calculator                  interactive mode (an empty line executes the formula)
 
+Comments: # until the end of the line, <# ... #> scoped (may span lines).
 Exit codes: 0 - success, 1 - the execution was aborted by an error, 2 - invalid usage.`);
 }
 

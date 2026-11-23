@@ -2,13 +2,13 @@
 export type StandardId = "core" | "stock";
 
 /** Context types of the standards (docs/core/context.md, docs/standards/stock/README.md). */
-export type ContextKind = "default" | "iteration" | "stock" | "indicator" | "pattern" | "strategy";
+export type ContextKind = "default" | "iteration" | "time" | "stock" | "indicator" | "pattern" | "strategy";
 
 export interface StandardDefinition {
   readonly id: StandardId;
-  /** `Core 0.3` */
+  /** `Core 1.0` */
   readonly name: string;
-  /** `core-0.3` */
+  /** `core-1.0` */
   readonly identifier: string;
   readonly contexts: readonly ContextDefinition[];
 }
@@ -36,6 +36,9 @@ export type PatternType = "bullish" | "bearish";
 export type PatternColor = "green" | "red";
 
 export interface PatternConfig extends Example {
+  /** Identifier of the pattern in the registry: `LOAD_PATTERN("ENGULFING")`. */
+  readonly patternId: string;
+  readonly parameters: readonly IndicatorParameterConfig[];
   readonly type: PatternType;
   readonly color: PatternColor;
   /** Number of candles of the pattern, ending with the candle where it is detected (width of its rectangle). */
@@ -44,6 +47,7 @@ export interface PatternConfig extends Example {
 
 // Indicator Context
 
+/** A parameter of a definition of the registry (an indicator or a pattern). */
 export interface IndicatorParameterConfig {
   /** Key in `PARAMETERS`. */
   readonly id: string;
@@ -73,7 +77,7 @@ export type SeriesMode = "single" | "multiple";
 export type IndicatorType = "normal" | "oscillator";
 
 export interface IndicatorConfig extends Example {
-  /** Identifier of the indicator in the registry: `INDICATOR("SMA")`. */
+  /** Identifier of the indicator in the registry: `LOAD_INDICATOR("SMA")`. */
   readonly indicatorId: string;
   readonly parameters: readonly IndicatorParameterConfig[];
   readonly series: readonly SeriesConfig[];

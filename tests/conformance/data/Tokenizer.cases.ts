@@ -1,4 +1,4 @@
-// Generated from FormuLang.NET/tests/*/TokenizerTests.cs (Adisoreq/formulang-dotnet@21ce986).
+// Generated from FormuLang.NET/tests/*/TokenizerTests.cs (Adisoreq/formulang-dotnet@7e85d55).
 // Test cases of the reference implementation; regenerate instead of editing by hand.
 
 /** `TextAfterAssignment(string formula)` */

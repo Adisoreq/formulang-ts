@@ -14,6 +14,7 @@ import {
   type IValue,
   IterationContext,
   Parser,
+  TimeContext,
   Tokenizer,
   TypeNames,
   Validator,
@@ -21,15 +22,17 @@ import {
 } from "formulang-ts";
 import {
   type Candle,
+  FormulaParameter,
   IndicatorContext,
-  IndicatorParameter,
   PatternContext,
   StockContext,
   StockExecutor,
   StrategyContext,
   registerStock,
 } from "formulang-ts/stock";
-import { type IndicatorDraft, problemsOf } from "./indicators";
+import { type IndicatorDraft, type IndicatorParameterDraft, problemsOf } from "./indicators";
+import { type PatternDraft, patternProblems } from "./patterns-strategies";
+import { TimeSession } from "./time-session";
 import type { ChartCandle } from "./types";
 
 const executor = Executor.create();
@@ -41,22 +44,37 @@ export interface IndicatorSetup {
   readonly formula: string;
 }
 
+/** A pattern of the preview with its current formula. */
+export interface PatternSetup {
+  readonly config: PatternDraft;
+  readonly formula: string;
+}
+
+const definitionParameters = (parameters: readonly IndicatorParameterDraft[]): FormulaParameter[] =>
+  parameters.map((p) => new FormulaParameter(p.id, p.defaultValue));
+
 /**
- * An environment with the Core and Stock standards. Every indicator of the preview with a valid definition is in
- * the registry, with its current formula and the default values of its parameters, so `INDICATOR("SMA")` works
- * in every Stock formula.
+ * An environment with the Core and Stock standards. Every indicator and pattern of the preview with a valid
+ * definition is in the formula registry, with its current formula and the default values of its parameters, so
+ * `LOAD_INDICATOR("SMA")` and `LOAD_PATTERN("ENGULFING")` work in every Stock formula.
  */
-export function createEnvironment(indicators: readonly IndicatorSetup[] = []): Environment {
+export function createEnvironment(
+  indicators: readonly IndicatorSetup[] = [],
+  patterns: readonly PatternSetup[] = [],
+): Environment {
   const environment = Environment.create();
   const registry = registerStock(environment).registry;
-  const drafts = indicators.map((i) => i.config);
+  const indicatorDrafts = indicators.map((i) => i.config);
   for (const { config, formula } of indicators) {
-    if (problemsOf(config, drafts).length > 0) continue;
-    registry.add(
-      config.indicatorId,
-      formula,
-      config.parameters.map((p) => new IndicatorParameter(p.id, p.defaultValue)),
-    );
+    if (problemsOf(config, indicatorDrafts).length === 0) {
+      registry.indicators.add(config.indicatorId, formula, definitionParameters(config.parameters));
+    }
+  }
+  const patternDrafts = patterns.map((p) => p.config);
+  for (const { config, formula } of patterns) {
+    if (patternProblems(config, patternDrafts).length === 0) {
+      registry.patterns.add(config.patternId, formula, definitionParameters(config.parameters));
+    }
   }
   return environment;
 }
@@ -145,7 +163,12 @@ export function runIndicator(
   environment: Environment,
 ): IndicatorRun {
   const { config } = setup;
-  const context = IndicatorContext.create(environment, candles.map(toCandle), executor, parametersOf(setup));
+  const context = IndicatorContext.create(
+    environment,
+    candles.map(toCandle),
+    executor,
+    parametersOf(config.parameters),
+  );
   const result = stockExecutor.executeIndicator(setup.formula, context);
   const series: Record<string, (number | null)[]> = Object.fromEntries(config.series.map((s) => [s.id, []]));
   if (result.type.base === TypeNames.Error) return { kind: "indicator", series, error: result.raw as IError };
@@ -160,9 +183,10 @@ export function runIndicator(
   return { kind: "indicator", series, error: undefined };
 }
 
-/** `PARAMETERS` of the Indicator Context: the values of the parameters set in the preview. */
-function parametersOf(setup: IndicatorSetup): IObject {
-  return FlObject.from(setup.config.parameters.map((p) => [p.id, Value.number(p.value)] as const));
+/** `PARAMETERS` of the Indicator or Pattern Context: the values of the parameters set in the preview. */
+function parametersOf(parameters: readonly IndicatorParameterDraft[]): IObject {
+  const unique = parameters.filter((p, i) => parameters.findIndex((q) => q.id === p.id) === i);
+  return FlObject.from(unique.map((p) => [p.id, Value.number(p.value)] as const));
 }
 
 export interface PatternRun {
@@ -172,10 +196,30 @@ export interface PatternRun {
   readonly error: IError | undefined;
 }
 
-export function runPattern(formula: string, candles: readonly ChartCandle[], environment: Environment): PatternRun {
-  const context = PatternContext.create(environment, candles.map(toCandle), executor);
-  const result = stockExecutor.executePattern(formula, context);
+/** Runs a pattern formula with `PARAMETERS` = the values of the parameters set in the preview. */
+export function runPattern(setup: PatternSetup, candles: readonly ChartCandle[], environment: Environment): PatternRun {
+  const context = PatternContext.create(
+    environment,
+    candles.map(toCandle),
+    executor,
+    parametersOf(setup.config.parameters),
+  );
+  const result = stockExecutor.executePattern(setup.formula, context);
   return { kind: "pattern", indices: result.indices, error: result.successful ? undefined : result.error };
+}
+
+/** The frames of a Time Context, executed by the output of the preview while it plays. */
+export interface TimeRun {
+  readonly kind: "time";
+  readonly session: TimeSession;
+}
+
+/** Prepares the frames of a Time Context; the output of the preview executes them as time passes. */
+export function runTime(formula: string, environment: Environment): TimeRun {
+  return {
+    kind: "time",
+    session: new TimeSession(executor.createFrameRunner(formula, TimeContext.create(environment))),
+  };
 }
 
 export interface StrategySetup {

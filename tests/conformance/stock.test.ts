@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { Environment, Executor, FlObject, type IObject, type IValue, TypeNames, Value } from "../../src/index.js";
-import type { IndicatorRegistry } from "../../src/stock/index.js";
 import {
   type Candle,
   IndicatorContext,
@@ -9,7 +8,8 @@ import {
   StockExecutor,
   StockStandard,
   StrategyContext,
-  getIndicatorRegistry,
+  FormulaRegistry,
+  getFormulaRegistry,
   registerStock,
 } from "../../src/stock/index.js";
 import { expectResult } from "../helpers.js";
@@ -18,6 +18,8 @@ import {
   candle_Values,
   indicator_Examples,
   indicator_ResultThatIsNotAllowed,
+  isBullishAndIsBearish,
+  loadPattern_Errors,
   require,
 } from "./data/Stock.cases.js";
 
@@ -46,14 +48,14 @@ IF(ISNULL($x),
       IF($complete, AVG($window), null)))`;
 
 const MACD = `
-$short = INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
-$long = INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
+$short = LOAD_INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
+$long = LOAD_INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
 
 # MACD line for every candle: the two series joined element by element
 $line = MAP($short, (s, i) => IF(OR(ISNULL(s), ISNULL($long[i])), null, s - $long[i]))
 
 $macd = $line[I]
-$signal = INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
+$signal = LOAD_INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
 
 IF(OR(ISNULL($macd), ISNULL($signal)),
    null,
@@ -72,8 +74,8 @@ $covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
 AND(I > @array_indexing, AND($prev_bearish, AND($curr_bullish, $covers)))`;
 
 const CROSSOVER = `
-$fast = INDICATOR("SMA", { period: 10 })
-$slow = INDICATOR("SMA", { period: 40 })
+$fast = LOAD_INDICATOR("SMA", { period: 10 })
+$slow = LOAD_INDICATOR("SMA", { period: 40 })
 
 $p = MAX(I - 1, @array_indexing)
 $fast_prev = $fast[$p]
@@ -92,18 +94,18 @@ IF(NOT($ready),
       IF(AND($fast_prev >= $slow_prev, $fast_curr < $slow_curr), SELL, NEUTRAL)))`;
 
 const MACD_STRENGTH = `
-$macd = INDICATOR("MACD")[I]
+$macd = LOAD_INDICATOR("MACD")[I]
 
 IF(ISNULL($macd),
    NEUTRAL,
    CLAMP($macd.histogram / CLOSE[I] * 100, SELL, BUY))`;
 
-function createEnvironment(): { environment: Environment; registry: IndicatorRegistry } {
+function createEnvironment(): { environment: Environment; registry: FormulaRegistry } {
   const environment = Environment.create();
   const registry = registerStock(environment).registry;
-  registry.add("SMA", SMA, { period: 14 });
-  registry.add("EMA", EMA, { period: 14 });
-  registry.add("MACD", MACD, { short_period: 12, long_period: 26, signal_period: 9 });
+  registry.indicators.add("SMA", SMA, { period: 14 });
+  registry.indicators.add("EMA", EMA, { period: 14 });
+  registry.indicators.add("MACD", MACD, { short_period: 12, long_period: 26, signal_period: 9 });
   return { environment, registry };
 }
 
@@ -123,11 +125,11 @@ function params(entries: Record<string, number>): IObject {
 describe("Stock standard", () => {
   it("is registered in the environment", () => {
     const { environment } = createEnvironment();
-    expect(environment.supports("stock-0.1")).toBe(true);
-    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-0.3", "stock-0.1"]');
+    expect(environment.supports("stock-1.0")).toBe(true);
+    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-1.0", "stock-1.0"]');
     expect(environment.extendedTypes).toContain("Stock.Candle");
     expect(environment.getFunction("CANDLE")).toBeDefined();
-    expect(getIndicatorRegistry(environment)).toBeDefined();
+    expect(getFormulaRegistry(environment)).toBeDefined();
     expect(StockStandard.isCoreSupported(environment)).toBe(true);
   });
 
@@ -182,45 +184,45 @@ describe("CANDLE", () => {
   it.each(candle_Values)("%j → %s", (formula, expected) => expectResult(runLast(formula, [flat(1)]), expected));
 });
 
-// docs/standards/stock/functions/INDICATOR.md
-describe("INDICATOR", () => {
+// docs/standards/stock/functions/LOAD_INDICATOR.md
+describe("LOAD_INDICATOR", () => {
   it.each(indicator_Examples)("%j → %s", (formula, expected) => expectResult(runLast(formula), expected));
 
   it("does not pass the environment variables of the caller", () => {
-    expect(runLast('@array_indexing = 1\nINDICATOR("SMA", { period: 3 })')).toBe("[null, null, 2, 3, 4]");
-    expect(runLast('@array_indexing = 1\nINDICATOR("SMA", { period: 3 })[I]')).toBe("4");
+    expect(runLast('@array_indexing = 1\nLOAD_INDICATOR("SMA", { period: 3 })')).toBe("[null, null, 2, 3, 4]");
+    expect(runLast('@array_indexing = 1\nLOAD_INDICATOR("SMA", { period: 3 })[I]')).toBe("4");
   });
 
   it("fails outside of a Stock Context", () =>
-    expect(Executor.create().execute('INDICATOR("SMA")', createEnvironment().environment).error.name).toBe(
+    expect(Executor.create().execute('LOAD_INDICATOR("SMA")', createEnvironment().environment).error.name).toBe(
       "OPERATION_ERROR",
     ));
 
   it("detects an indicator that calls itself", () => {
     const { environment, registry } = createEnvironment();
-    registry.add("LOOP", 'INDICATOR("LOOP")[I]');
-    registry.add("A", 'INDICATOR("B")[I]');
-    registry.add("B", 'INDICATOR("A")[I]');
-    expect(runLast('INDICATOR("LOOP")', ONE_TO_FIVE, environment)).toMatch(
+    registry.indicators.add("LOOP", 'LOAD_INDICATOR("LOOP")[I]');
+    registry.indicators.add("A", 'LOAD_INDICATOR("B")[I]');
+    registry.indicators.add("B", 'LOAD_INDICATOR("A")[I]');
+    expect(runLast('LOAD_INDICATOR("LOOP")', ONE_TO_FIVE, environment)).toMatch(
       /^\[OPERATION_ERROR \(3\)\] Indicator "LOOP" calls itself\./,
     );
-    expect(runLast('INDICATOR("A")', ONE_TO_FIVE, environment)).toMatch(
+    expect(runLast('LOAD_INDICATOR("A")', ONE_TO_FIVE, environment)).toMatch(
       /^\[OPERATION_ERROR \(3\)\] Indicator "A" calls itself\./,
     );
   });
 
   it("returns the Error of an iteration", () => {
     const { environment, registry } = createEnvironment();
-    registry.add("FAIL", 'IF(I == 2, ERROR("broken"), I)');
-    expect(runLast('INDICATOR("FAIL")', ONE_TO_FIVE, environment)).toBe("[CUSTOM_ERROR (1)] broken");
+    registry.indicators.add("FAIL", 'IF(I == 2, ERROR("broken"), I)');
+    expect(runLast('LOAD_INDICATOR("FAIL")', ONE_TO_FIVE, environment)).toBe("[CUSTOM_ERROR (1)] broken");
   });
 
   it.each(indicator_ResultThatIsNotAllowed)("rejects the indicator result %j", (formula) => {
     const { environment, registry } = createEnvironment();
-    registry.add("BAD", formula);
-    expect(runLast('INDICATOR("BAD")', ONE_TO_FIVE, environment).startsWith("[OPERATION_ERROR (3)] Iteration")).toBe(
-      true,
-    );
+    registry.indicators.add("BAD", formula);
+    expect(
+      runLast('LOAD_INDICATOR("BAD")', ONE_TO_FIVE, environment).startsWith("[OPERATION_ERROR (3)] Iteration"),
+    ).toBe(true);
   });
 
   it("computes MACD", () => {
@@ -240,7 +242,7 @@ describe("INDICATOR", () => {
 
   it("uses MACD in a formula", () => {
     const formula =
-      '$macd = INDICATOR("MACD", { short_period: 2, long_period: 3, signal_period: 2 })[I]\nIF(ISNULL($macd), null, ROUND($macd.histogram, 6))';
+      '$macd = LOAD_INDICATOR("MACD", { short_period: 2, long_period: 3, signal_period: 2 })[I]\nIF(ISNULL($macd), null, ROUND($macd.histogram, 6))';
     const context = StockContext.create(createEnvironment().environment, ONE_TO_FIVE);
     expect(Executor.create().executeIterations(formula, context).values.map(String)).toEqual([
       "null",
@@ -312,6 +314,131 @@ describe("Patterns and strategies", () => {
     expect(new StockExecutor().executeStrategy("I - 2 + BUY * 0 + SELL * 0 + NEUTRAL", context).signals).toEqual([
       -1, -1, 0, 1, 1,
     ]);
+  });
+});
+
+// stock-1.0: IS_BULLISH, IS_BEARISH, LOAD_PATTERN and the patterns of the formula registry
+
+/** Open -> close: 10 -> 12, 12 -> 11, 10.5 -> 13 (bullish engulfing), 13 -> 14. */
+const ENGULFING: readonly Candle[] = [
+  { open: 10, high: 12.5, low: 9.5, close: 12 },
+  { open: 12, high: 12.5, low: 10.8, close: 11 },
+  { open: 10.5, high: 13.2, low: 10.4, close: 13 },
+  { open: 13, high: 14.5, low: 12.9, close: 14 },
+];
+
+// docs/standards/stock/examples/strategy_examples.md, "Bullish engulfing pattern"
+const ENGULFING_PATTERN = `
+$prev = CANDLES[MAX(I - 1, @array_indexing)]
+$curr = CANDLES[I]
+$covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
+AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers)))`;
+
+function createPatternEnvironment(): Environment {
+  const { environment, registry } = createEnvironment();
+  registry.patterns.add("ENGULFING", ENGULFING_PATTERN);
+  registry.patterns.add("BIG_BODY", "ABS(CLOSE[I] - OPEN[I]) >= PARAMETERS.min_body", { min_body: 2 });
+  registry.patterns.add("SMA", "true"); // the same identifier as an indicator, in the other part of the registry
+  registry.patterns.add("LOOP", 'LOAD_PATTERN("LOOP")[I]');
+  registry.patterns.add("NUMBER", "1");
+  return environment;
+}
+
+/** Executes every iteration (also after an Error) and returns the serialized results. */
+function runAll(formula: string, environment: Environment, candles: readonly Candle[]): string[] {
+  const context = StockContext.create(environment, candles);
+  return Executor.create()
+    .executeIterations(formula, context, false)
+    .results.map((r) => r.toString());
+}
+
+// docs/standards/stock/functions/IS_BULLISH.md, IS_BEARISH.md
+describe("IS_BULLISH and IS_BEARISH", () => {
+  it.each(isBullishAndIsBearish)("%j → %s", (formula, expected) => expectResult(runLast(formula), expected));
+
+  it("checks the current candle", () =>
+    expect(runAll("IS_BULLISH(CANDLES[I])", createEnvironment().environment, ENGULFING)).toEqual([
+      "true",
+      "false",
+      "true",
+      "true",
+    ]));
+});
+
+// docs/standards/stock/functions/LOAD_PATTERN.md
+describe("LOAD_PATTERN", () => {
+  it("returns the whole series", () => {
+    const environment = createPatternEnvironment();
+    expect(runAll('LOAD_PATTERN("ENGULFING")', environment, ENGULFING)[0]).toBe("[false, false, true, false]");
+    expect(runAll('LOAD_PATTERN("ENGULFING")[I]', environment, ENGULFING)[2]).toBe("true");
+    expect(runAll('LEN(FILTER(LOAD_PATTERN("ENGULFING"), (e) => e))', environment, ENGULFING)[0]).toBe("1");
+  });
+
+  it("completes the parameters", () => {
+    const environment = createPatternEnvironment();
+    expect(runAll('LOAD_PATTERN("BIG_BODY")[I]', environment, ENGULFING)).toEqual(["true", "false", "true", "false"]);
+    expect(runAll('LOAD_PATTERN("BIG_BODY", { min_body: 1 })[I]', environment, ENGULFING)).toEqual([
+      "true",
+      "true",
+      "true",
+      "true",
+    ]);
+  });
+
+  it.each(loadPattern_Errors)("%j → %s", (formula, expected) =>
+    expect(runAll(formula, createPatternEnvironment(), ENGULFING)[0]!.startsWith(`[${expected} (`)).toBe(true),
+  );
+
+  it("keeps indicators and patterns in separate parts of the registry", () => {
+    const environment = createPatternEnvironment();
+    expect(runAll('LOAD_PATTERN("SMA")', environment, ENGULFING)[0]).toBe("[true, true, true, true]");
+    expect(runAll('LOAD_INDICATOR("SMA", { period: 2 })', environment, ENGULFING)[0]).toBe("[null, 11.5, 12, 13.5]");
+  });
+
+  it("fails outside of a Stock Context", () =>
+    expect(Executor.create().execute('LOAD_PATTERN("ENGULFING")', createPatternEnvironment()).toString()).toMatch(
+      /^\[OPERATION_ERROR \(/,
+    ));
+
+  it("can be used in a strategy", () => {
+    const context = StrategyContext.create(createPatternEnvironment(), ENGULFING);
+    expect(
+      new StockExecutor().executeStrategy('IF(LOAD_PATTERN("ENGULFING")[I], BUY, NEUTRAL)', context).signals,
+    ).toEqual([0, 0, 1, 0]);
+  });
+
+  it("gives PARAMETERS to a Pattern Context", () => {
+    const context = PatternContext.create(
+      createEnvironment().environment,
+      ENGULFING,
+      undefined,
+      params({ min_body: 2 }),
+    );
+    expect(
+      new StockExecutor().executePattern("ABS(CLOSE[I] - OPEN[I]) >= PARAMETERS.min_body", context).indices,
+    ).toEqual([0, 2]);
+    const empty = PatternContext.create(createEnvironment().environment, ENGULFING);
+    expect(Executor.create().executeIterations("PARAMETERS", empty).results[0]!.toString()).toBe("{ }");
+  });
+
+  it("is computed by the host", () => {
+    const context = StockContext.create(createPatternEnvironment(), ENGULFING);
+    expect(context.computePattern("ENGULFING").toString()).toBe("[false, false, true, false]");
+  });
+
+  it("has unique identifiers within a part of the registry", () => {
+    const registry = new FormulaRegistry();
+    registry.indicators.add("A", "1");
+    registry.patterns.add("A", "true");
+    expect(() => registry.patterns.add("A", "false")).toThrow(Error);
+  });
+
+  it("gives the NOW of the caller to a child context", () => {
+    const { environment, registry } = createEnvironment();
+    registry.indicators.add("CLOCK", "NOW");
+    const context = StockContext.create(environment, ONE_TO_FIVE);
+    const result = Executor.create().executeIterations('ALL(LOAD_INDICATOR("CLOCK"), (t) => t == NOW)', context);
+    expect(result.results.map(String)).toEqual(["true", "true", "true", "true", "true"]);
   });
 });
 

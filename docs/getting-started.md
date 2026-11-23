@@ -1,8 +1,5 @@
 # Getting started
 
-> [!IMPORTANT]
-> FormuLang-TS is in the prototyping stage. The API can change in any `0.x` version.
-
 ## Requirements
 
 - [Node.js](https://nodejs.org) 20 or newer, or any modern browser (the library has no runtime dependencies and uses ES2022).
@@ -10,7 +7,11 @@
 
 ## Installation
 
-The library is not published on npm yet. Build it from the repository and install it from the folder (or from the archive created by `npm pack`):
+```bash
+npm install formulang-ts
+```
+
+To use a version that is not published yet, build the library from the repository and install it from the folder (or from the archive created by `npm pack`):
 
 ```bash
 git clone https://github.com/Adisoreq/formulang-ts.git
@@ -28,9 +29,9 @@ The package has three entry points, each available as an ES module and as Common
 
 | Import | Content |
 | :----- | :------ |
-| `formulang-ts` | Core standard (`core-0.3`), the execution pipeline and the JavaScript facade |
+| `formulang-ts` | Core standard (`core-1.0`), the execution pipeline and the JavaScript facade |
 | `formulang-ts/abstractions` | Interfaces only (`IValue`, `IContext`, `IEvaluator`, ...), for hosts and extensions that depend only on the contracts |
-| `formulang-ts/stock` | Stock extension standard (`stock-0.1`) |
+| `formulang-ts/stock` | Stock extension standard (`stock-1.0`) |
 
 ## Quick start: the JavaScript facade
 
@@ -104,7 +105,7 @@ The facade is built on an API that follows the architecture of the reference imp
 ```ts
 import { Environment, Executor } from "formulang-ts";
 
-const environment = Environment.create();   // supports core-0.3
+const environment = Environment.create();   // supports core-1.0
 const executor = Executor.create();
 
 const result = executor.execute("$r := 2.5\nPI * $r ^ 2", environment);
@@ -214,20 +215,24 @@ import { Environment, Executor } from "formulang-ts";
 import { registerStock, StockContext, StockExecutor, StrategyContext } from "formulang-ts/stock";
 
 const environment = Environment.create();
-const registry = registerStock(environment).registry;   // Stock.Candle, CANDLE, INDICATOR, stock-0.1
-registry.add("SMA", "$p = PARAMETERS.period\n$w = RANGE(SOURCE, MAX(I - $p + 1, 0), I)\nIF(LEN($w) == $p, AVG($w), null)", { period: 3 });
+const registry = registerStock(environment).registry;   // Stock.Candle, CANDLE, LOAD_INDICATOR, LOAD_PATTERN, stock-1.0
+registry.indicators.add("SMA", "$p = PARAMETERS.period\n$w = RANGE(SOURCE, MAX(I - $p + 1, 0), I)\nIF(LEN($w) == $p, AVG($w), null)", { period: 3 });
 
 const candles = [1, 2, 3, 4, 5].map((p) => ({ open: p, high: p, low: p, close: p }));
 
 const context = StockContext.create(environment, candles);
-Executor.create().executeIterations('INDICATOR("SMA")[I]', context).values.map(String);
+Executor.create().executeIterations('LOAD_INDICATOR("SMA")[I]', context).values.map(String);
 // ["null", "null", "2", "3", "4"]
+
+// Patterns are the second part of the formula registry; LOAD_PATTERN returns a Boolean for every candle
+registry.patterns.add("RISING", "AND(I > 0, CLOSE[I] > CLOSE[MAX(I - 1, 0)])");
+context.computePattern("RISING").toString();   // "[false, true, true, true, true]"
 
 const strategy = new StockExecutor().executeStrategy("IF(CLOSE[I] > 3, BUY, NEUTRAL)", StrategyContext.create(environment, candles));
 strategy.signals;   // [0, 0, 0, 1, 1]
 ```
 
-The Stock, Indicator, Pattern and Strategy contexts and `StockExecutor` (`executeIndicator`, `executePattern`, `executeStrategy`) follow the [Stock standard](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/README.md).
+The Stock, Indicator, Pattern and Strategy contexts and `StockExecutor` (`executeIndicator`, `executePattern`, `executePatternSeries`, `executeStrategy`) follow the [Stock standard](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/README.md).
 
 ## Samples
 
@@ -237,7 +242,7 @@ The samples in [samples/](../samples) are separate projects, each with its own `
 npm ci && npm run build
 ```
 
-**Calculator CLI** ([samples/calculator-cli](../samples/calculator-cli/README.md)) executes a formula in a basic Core environment and prints the result, or the errors that stopped the execution:
+**Calculator CLI** ([samples/calculator-cli](../samples/calculator-cli/README.md)) executes a formula in a Core environment with the Stock standard and prints the result, or the errors that stopped the execution:
 
 ```bash
 cd samples/calculator-cli && npm install && npm start -- "2 + 2 * 2"

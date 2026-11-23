@@ -6,6 +6,15 @@ const ITERATION_CONSTANTS = [
   { name: "PREV", detail: "result of the previous iteration; null in the first one" },
 ];
 
+const TIME_CONSTANTS = [
+  { name: "TIME_S", detail: "time from the first frame, in seconds" },
+  { name: "TIME_MS", detail: "time from the first frame, in milliseconds" },
+  { name: "DTIME_S", detail: "time from the previous frame, in seconds; 0 in the first frame" },
+  { name: "DTIME_MS", detail: "time from the previous frame, in milliseconds" },
+  { name: "FRAME", detail: "index of the current frame (follows @array_indexing)" },
+  { name: "PREV", detail: "result of the previous frame; null in the first one" },
+];
+
 const STOCK_CONSTANTS = [
   ...ITERATION_CONSTANTS,
   { name: "CANDLES", detail: "Array<Stock.Candle>, oldest first" },
@@ -20,8 +29,8 @@ const STOCK_CONSTANTS = [
 export const STANDARDS: readonly StandardDefinition[] = [
   {
     id: "core",
-    name: "Core 0.3",
-    identifier: "core-0.3",
+    name: "Core 1.0",
+    identifier: "core-1.0",
     contexts: [
       {
         kind: "default",
@@ -37,12 +46,19 @@ export const STANDARDS: readonly StandardDefinition[] = [
         description: "Executes the formula once per iteration; every iteration starts without variables.",
         constants: ITERATION_CONSTANTS,
       },
+      {
+        kind: "time",
+        standard: "core",
+        name: "Time Context",
+        description: "Executes the formula once per frame as time passes: animations, simulations, clocks.",
+        constants: TIME_CONSTANTS,
+      },
     ],
   },
   {
     id: "stock",
-    name: "Stock 0.1",
-    identifier: "stock-0.1",
+    name: "Stock 1.0",
+    identifier: "stock-1.0",
     contexts: [
       {
         kind: "stock",
@@ -67,7 +83,10 @@ export const STANDARDS: readonly StandardDefinition[] = [
         standard: "stock",
         name: "Pattern Context",
         description: "Returns a Boolean for every candle: whether the pattern ends at it.",
-        constants: STOCK_CONSTANTS,
+        constants: [
+          ...STOCK_CONSTANTS,
+          { name: "PARAMETERS", detail: "parameters of the pattern, completed with the defaults" },
+        ],
       },
       {
         kind: "strategy",
@@ -124,10 +143,55 @@ $stdev = SQRT(SUM(MAP($data, (x) => (x - $mean) ^ 2)) / LEN($data))
   {
     id: "text",
     name: "Text functions",
-    description: "Functions of texts from Core 0.3.",
+    description: "Text functions; a character is one Unicode code point.",
     formula: `$name = "  formulang  "
 $clean = UPPERCASE(TRIM($name))
-[$clean, LEN($clean), SPLIT("a,b,c", ","), REPLACE($clean, "LANG", "-LANG")]`,
+$word = "Zażółć gęślą jaźń"
+
+[$clean, LEN($clean), SPLIT("a,b,c", ","), REPLACE($clean, "LANG", "-LANG"), LEN($word), REVERSE($word)]`,
+  },
+  {
+    id: "format",
+    name: "Formatting",
+    description: "FORMAT with sequential, indexed and named placeholders.",
+    formula: `$items = [{ name: "Coffee", price: 12.5 }, { name: "Croissant", price: 7.25 }]
+$total = SUM(MAP($items, (e) => e.price))
+
+$lines = MAP($items, (e, i) => FORMAT("{0}. {1} – {2:.2} zł", [i + 1, e.name, e.price]))
+$summary = FORMAT("Total: {total:.2} zł ({count} items)", { total: $total, count: LEN($items) })
+
+JOIN($lines, "\\n") + "\\n" + $summary`,
+  },
+  {
+    id: "time",
+    name: "Time functions",
+    description: "NOW, the parts of a date, DATE and FORMAT_TIME.",
+    formula: `<# NOW is the moment of the execution: Unix time in milliseconds, UTC #>
+@time_offset = 60    # local time UTC+1, only for this execution
+
+$days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+$today = DATE(YEAR(NOW), MONTH(NOW), DAY(NOW))
+$new_year = DATE(YEAR(NOW) + 1, 1, 1)
+
+FORMAT("{} {} · {} days until the new year", [
+    $days[WEEKDAY(NOW) - 1],
+    FORMAT_TIME(NOW, "DD.MM.YYYY hh:mm:ss"),
+    ($new_year - $today) / (24 * 60 * 60 * 1000)
+])`,
+  },
+  {
+    id: "comments",
+    name: "Comments",
+    description: "Line comments and scoped comments that may span several lines.",
+    formula: `$a = 14          # a line comment ends with the line
+$b = <# a scoped comment #> 24
+
+<#
+A scoped comment may span
+several lines.
+#>
+
+$a + $b`,
   },
   {
     id: "serialization",
@@ -183,6 +247,48 @@ const ITERATION_EXAMPLES: Example[] = [
   },
 ];
 
+const TIME_EXAMPLES: Example[] = [
+  {
+    id: "motion",
+    name: "Moving point",
+    description: "Moves with 5 units per second and stops at 100; the position is carried in PREV.",
+    formula: `$speed = 5
+$position = IF(ISNULL(PREV), 0, PREV)
+MIN($position + $speed * DTIME_S, 100)`,
+  },
+  {
+    id: "constants",
+    name: "Constants",
+    description: "The constants of every frame.",
+    formula: "[FRAME, ROUND(TIME_S, 2), ROUND(DTIME_MS, 1)]",
+  },
+  {
+    id: "wave",
+    name: "Sine wave",
+    description: "A value that oscillates between -1 and 1 every 4 seconds.",
+    formula: "ROUND(SIN(TIME_S / 4 * 2 * PI), 3)",
+  },
+  {
+    id: "rotation",
+    name: "Rotation",
+    description: "An angle that repeats every 4 seconds.",
+    formula: "ROUND(MOD(TIME_S / 4 * 360, 360), 1)",
+  },
+  {
+    id: "clock",
+    name: "Clock",
+    description: "NOW is set again for every frame.",
+    formula: 'FORMAT_TIME(NOW, "hh:mm:ss.iii")',
+  },
+  {
+    id: "stopwatch",
+    name: "Stopwatch",
+    description: "Frames per second measured from DTIME_S.",
+    formula: `$fps = IF(DTIME_S == 0, 0, 1 / DTIME_S)
+FORMAT("{:.1} s · frame {} · {:.0} fps", [TIME_S, FRAME, $fps])`,
+  },
+];
+
 // Stock
 
 const STOCK_EXAMPLES: Example[] = [
@@ -209,6 +315,12 @@ const STOCK_EXAMPLES: Example[] = [
     name: "Running maximum",
     description: "The highest close so far, carried in PREV.",
     formula: "IF(ISNULL(PREV), CLOSE[I], MAX(PREV, CLOSE[I]))",
+  },
+  {
+    id: "direction",
+    name: "Direction",
+    description: "IS_BULLISH and IS_BEARISH; a doji is neither.",
+    formula: 'IF(IS_BULLISH(CANDLES[I]), "bullish", IF(IS_BEARISH(CANDLES[I]), "bearish", "doji"))',
   },
 ];
 
@@ -393,14 +505,14 @@ IF(I - $from + 1 < $period,
     indicatorId: "MACD",
     name: "MACD",
     description: "Difference of two EMAs, its signal line and their histogram (docs/standards/stock/examples).",
-    formula: `$short = INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
-$long = INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
+    formula: `$short = LOAD_INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
+$long = LOAD_INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
 
 # MACD line for every candle: the two series joined element by element
 $line = MAP($short, (s, i) => IF(OR(ISNULL(s), ISNULL($long[i])), null, s - $long[i]))
 
 $macd = $line[I]
-$signal = INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
+$signal = LOAD_INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
 
 IF(OR(ISNULL($macd), ISNULL($signal)),
    null,
@@ -476,39 +588,44 @@ const PREVIOUS = "$prev = CANDLES[MAX(I - 1, @array_indexing)]\n$curr = CANDLES[
 export const PATTERNS: PatternConfig[] = [
   {
     id: "bullish-engulfing",
+    patternId: "ENGULFING",
     name: "Bullish engulfing",
     description: "A bullish candle whose body covers the body of the previous bearish candle.",
+    parameters: [],
     type: "bullish",
     color: "green",
     length: 2,
     formula: `# In the first iteration, the previous candle is the current one
 ${PREVIOUS}
 
-$prev_bearish = $prev.close < $prev.open
-$curr_bullish = $curr.close > $curr.open
 $covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
 
-AND(I > @array_indexing, AND($prev_bearish, AND($curr_bullish, $covers)))`,
+AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers)))`,
   },
   {
     id: "bearish-engulfing",
+    patternId: "BEARISH_ENGULFING",
     name: "Bearish engulfing",
     description: "A bearish candle whose body covers the body of the previous bullish candle.",
+    parameters: [],
     type: "bearish",
     color: "red",
     length: 2,
     formula: `${PREVIOUS}
 
-$prev_bullish = $prev.close > $prev.open
-$curr_bearish = $curr.close < $curr.open
 $covers = AND($curr.open >= $prev.close, $curr.close <= $prev.open)
 
-AND(I > @array_indexing, AND($prev_bullish, AND($curr_bearish, $covers)))`,
+AND(I > @array_indexing, AND(IS_BULLISH($prev), AND(IS_BEARISH($curr), $covers)))`,
   },
   {
     id: "hammer",
+    patternId: "HAMMER",
     name: "Hammer",
     description: "A small body at the top of the candle with a long lower shadow.",
+    parameters: [
+      { id: "shadow", name: "Lower shadow × body", defaultValue: 2 },
+      { id: "max_upper", name: "Max upper shadow (of range)", defaultValue: 0.15 },
+    ],
     type: "bullish",
     color: "green",
     length: 1,
@@ -518,12 +635,17 @@ $range = $c.high - $c.low
 $lower = MIN($c.open, $c.close) - $c.low
 $upper = $c.high - MAX($c.open, $c.close)
 
-AND($range > 0, AND($lower >= 2 * $body, $upper <= 0.15 * $range))`,
+AND($range > 0, AND($lower >= PARAMETERS.shadow * $body, $upper <= PARAMETERS.max_upper * $range))`,
   },
   {
     id: "shooting-star",
+    patternId: "SHOOTING_STAR",
     name: "Shooting star",
     description: "A small body at the bottom of the candle with a long upper shadow.",
+    parameters: [
+      { id: "shadow", name: "Upper shadow × body", defaultValue: 2 },
+      { id: "max_lower", name: "Max lower shadow (of range)", defaultValue: 0.15 },
+    ],
     type: "bearish",
     color: "red",
     length: 1,
@@ -533,23 +655,24 @@ $range = $c.high - $c.low
 $lower = MIN($c.open, $c.close) - $c.low
 $upper = $c.high - MAX($c.open, $c.close)
 
-AND($range > 0, AND($upper >= 2 * $body, $lower <= 0.15 * $range))`,
+AND($range > 0, AND($upper >= PARAMETERS.shadow * $body, $lower <= PARAMETERS.max_lower * $range))`,
   },
   {
     id: "three-soldiers",
+    patternId: "THREE_SOLDIERS",
     name: "Three white soldiers",
-    description: "Three bullish candles in a row, each closing higher than the previous one.",
+    description: "Bullish candles in a row, each closing higher than the previous one.",
+    parameters: [{ id: "count", name: "Candles", defaultValue: 3 }],
     type: "bullish",
     color: "green",
     length: 3,
-    formula: `$a = CANDLES[MAX(I - 2, @array_indexing)]
-$b = CANDLES[MAX(I - 1, @array_indexing)]
-$c = CANDLES[I]
+    formula: `$n = PARAMETERS.count
+$from = MAX(I - $n + 1, @array_indexing)
 
-$bullish = AND($a.close > $a.open, AND($b.close > $b.open, $c.close > $c.open))
-$rising = AND($b.close > $a.close, $c.close > $b.close)
+# Every candle of the window is bullish and closes higher than the previous one
+$rising = (k) => AND(IS_BULLISH(CANDLES[k]), IF(k == $from, true, CLOSE[k] > CLOSE[MAX(k - 1, @array_indexing)]))
 
-AND(I >= @array_indexing + 2, AND($bullish, $rising))`,
+AND(I - $n + 1 >= @array_indexing, ALL(SEQ($n, 1, $from), $rising))`,
   },
 ];
 
@@ -560,8 +683,8 @@ export const STRATEGIES: StrategyConfig[] = [
     description: "Buys when the fast SMA crosses above the slow SMA, sells when it crosses below.",
     confidence: 1,
     lifetime: 5,
-    formula: `$fast = INDICATOR("SMA", { period: 10 })
-$slow = INDICATOR("SMA", { period: 30 })
+    formula: `$fast = LOAD_INDICATOR("SMA", { period: 10 })
+$slow = LOAD_INDICATOR("SMA", { period: 30 })
 
 $p = MAX(I - 1, @array_indexing)
 $values = [$fast[$p], $slow[$p], $fast[I], $slow[I]]
@@ -579,7 +702,7 @@ IF(NOT($ready),
     description: "Expects the price to return inside the Bollinger bands.",
     confidence: 0.6,
     lifetime: 3,
-    formula: `$b = INDICATOR("BOLLINGER")[I]
+    formula: `$b = LOAD_INDICATOR("BOLLINGER")[I]
 
 IF(ISNULL($b),
    NEUTRAL,
@@ -599,6 +722,19 @@ $before = IF(I < $n + 1, 0, (CLOSE[I - 1] - CLOSE[I - 1 - $n]) / CLOSE[I - 1 - $
 # A signal only when the change crosses the threshold
 IF(AND(ABS($now) > $t, ABS($before) <= $t), SIGN($now), NEUTRAL)`,
   },
+  {
+    id: "pattern-trend",
+    name: "Engulfing above the trend",
+    description: "Buys on a bullish engulfing pattern (LOAD_PATTERN) above the 20-candle SMA.",
+    confidence: 1,
+    lifetime: 4,
+    formula: `$engulfing = LOAD_PATTERN("ENGULFING")[I]
+$sma = LOAD_INDICATOR("SMA", { period: 20 })[I]
+
+IF(ISNULL($sma),
+   NEUTRAL,
+   IF(AND($engulfing, CLOSE[I] > $sma), BUY, NEUTRAL))`,
+  },
 ];
 
 /** Identifier of the empty formula that every context type offers next to its examples. */
@@ -613,7 +749,8 @@ const NEW_EXAMPLE: Example = {
 
 INDICATORS.push({
   ...NEW_EXAMPLE,
-  description: 'An empty indicator: return a Number for every candle. It is in the registry as INDICATOR("CUSTOM").',
+  description:
+    'An empty indicator: return a Number for every candle. Other formulas load it with LOAD_INDICATOR("CUSTOM").',
   indicatorId: "CUSTOM",
   parameters: [],
   series: [
@@ -632,7 +769,10 @@ INDICATORS.push({
 
 PATTERNS.push({
   ...NEW_EXAMPLE,
-  description: "An empty pattern: return true for the candle where the pattern ends.",
+  description:
+    'An empty pattern: return true for the candle where the pattern ends. Other formulas load it with LOAD_PATTERN("CUSTOM").',
+  patternId: "CUSTOM",
+  parameters: [],
   type: "bullish",
   color: "green",
   length: 1,
@@ -650,6 +790,7 @@ STRATEGIES.push({
 export const EXAMPLES: Record<ContextKind, readonly Example[]> = {
   default: [...DEFAULT_EXAMPLES, NEW_EXAMPLE],
   iteration: [...ITERATION_EXAMPLES, NEW_EXAMPLE],
+  time: [...TIME_EXAMPLES, NEW_EXAMPLE],
   stock: [...STOCK_EXAMPLES, NEW_EXAMPLE],
   indicator: INDICATORS,
   pattern: PATTERNS,

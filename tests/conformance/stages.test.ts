@@ -155,11 +155,11 @@ describe("Clean-up", () => {
 
 // docs/semantics/parsing.md, docs/standards/core/semantics/parsing.md
 describe("Parsing", () => {
-  const example = 'REQUIRE "core-0.2+"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)';
+  const example = 'REQUIRE "core-1+"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)';
 
   it("splits the example into sequences", () =>
     expect(roots(example)).toEqual([
-      'REQUIRE("core-0.2+")',
+      'REQUIRE("core-1+")',
       "SET($a,4)",
       "SET($b,3)",
       "SET($c,ADD(POW($a,2),POW($b,2)))",
@@ -185,7 +185,7 @@ describe("Parsing", () => {
   it("builds the primitive map of the example", () => {
     const map = parse(example).primitiveMap;
     expect(map.size).toBe(15);
-    expect(map.get('"core-0.2+"')?.kind).toBe(ExpressionKind.Value);
+    expect(map.get('"core-1+"')?.kind).toBe(ExpressionKind.Value);
     expect(map.get("$a")?.kind).toBe(ExpressionKind.Variable);
     expect(map.get("POW($a,2)")?.kind).toBe(ExpressionKind.FunctionCall);
     expect(map.get("SQRT($c)")?.kind).toBe(ExpressionKind.FunctionCall);
