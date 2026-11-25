@@ -1,0 +1,7 @@
+$n = 10
+$t = 0.06
+$now = IF(I < $n, 0, (CLOSE[I] - CLOSE[I - $n]) / CLOSE[I - $n])
+$before = IF(I < $n + 1, 0, (CLOSE[I - 1] - CLOSE[I - 1 - $n]) / CLOSE[I - 1 - $n])
+
+# A signal only when the change crosses the threshold
+IF(AND(ABS($now) > $t, ABS($before) <= $t), SIGN($now), NEUTRAL)

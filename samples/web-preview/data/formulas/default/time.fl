@@ -1,0 +1,12 @@
+<# NOW is the moment of the execution: Unix time in milliseconds, UTC #>
+@time_offset = 60    # local time UTC+1, only for this execution
+
+$days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+$today = DATE(YEAR(NOW), MONTH(NOW), DAY(NOW))
+$new_year = DATE(YEAR(NOW) + 1, 1, 1)
+
+FORMAT("{} {} · {} days until the new year", [
+    $days[WEEKDAY(NOW) - 1],
+    FORMAT_TIME(NOW, "DD.MM.YYYY hh:mm:ss"),
+    ($new_year - $today) / (24 * 60 * 60 * 1000)
+])

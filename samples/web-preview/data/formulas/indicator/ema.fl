@@ -1,0 +1,11 @@
+$period = PARAMETERS.period
+$alpha = 2 / ($period + 1)
+$x = SOURCE[I]
+$window = RANGE(SOURCE, MAX(I - $period + 1, @array_indexing), I)
+$complete = AND(LEN($window) == $period, LEN(FILTER($window, (e) => ISNULL(e))) == 0)
+
+IF(ISNULL($x),
+   null,
+   IF(NOT(ISNULL(PREV)),
+      $alpha * $x + (1 - $alpha) * PREV,
+      IF($complete, AVG($window), null)))

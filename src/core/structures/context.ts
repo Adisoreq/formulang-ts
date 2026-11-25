@@ -2,7 +2,7 @@ import type { IObject, IValue } from "../../abstractions/primitives.js";
 import { ContainerType } from "../../abstractions/primitives.js";
 import type { IContext, IEnvironment } from "../../abstractions/structures.js";
 import { ContextType } from "../../abstractions/structures.js";
-import { ComputedConstant } from "../primitives/containers.js";
+import { ComputedConstant, Constant, Variable } from "../primitives/containers.js";
 import { FlObject } from "../primitives/object.js";
 import { Types } from "../primitives/types.js";
 import { Value } from "../primitives/value.js";
@@ -93,12 +93,25 @@ export class Context extends FlObject implements IContext {
     this.loadContextData();
   }
 
-  /** Removes every context variable and every copy of an environment variable; constants stay. */
+  /**
+   * Removes every context variable and every copy of an environment variable; constants stay.
+   *
+   * Runs before every iteration or frame, so it avoids work in the common case: a copy of an environment variable
+   * that the formula did not change still holds the value of the environment and is kept, and a changed copy gets
+   * the value of the environment back. The result is the same as removing every copy and copying them again.
+   */
   protected clearVariables(): void {
     for (const key of this.keys) {
       if (this.getProperty(key)?.containerType === ContainerType.Variable) this.removeProperty(key);
     }
-    for (const key of this.#environmentVariables.keys) this.#environmentVariables.removeProperty(key);
+    for (const key of this.#environmentVariables.keys) {
+      const original = this.environment.getProperty(key);
+      if (original?.containerType !== ContainerType.Variable) {
+        this.#environmentVariables.removeProperty(key);
+      } else if (this.#environmentVariables.getProperty(key)!.getValue() !== original.getValue()) {
+        this.#environmentVariables.setContainer(new Variable(key, original.getValue()));
+      }
+    }
   }
 
   /** The value of an environment variable in this context, or `undefined` if it is not defined. */
@@ -166,8 +179,12 @@ export class IterationContext extends Context {
         Value.number(this.#iteration + arrayIndexing(this), IterationContext.iterationConstant),
       ),
     );
-    this.setConstant(IterationContext.previousConstant, this.#previous);
+    this.setContainer(
+      (this.#previousContainer = new ReplaceableConstant(IterationContext.previousConstant, this.#previous)),
+    );
   }
+
+  #previousContainer: ReplaceableConstant | undefined;
 
   /**
    * Prepares an iteration: removes the variables of the previous one, sets `I` and `PREV`, and copies the
@@ -179,7 +196,7 @@ export class IterationContext extends Context {
     if (!Number.isInteger(iteration) || iteration < 0 || iteration >= Math.max(this.count, 1)) {
       throw new RangeError(`Iteration ${iteration} is out of range.`);
     }
-    this.preExecute(); // loads the context constants before the first iteration
+    this.loadOnce(); // loads the context constants before the first iteration
     this.clearVariables();
     if (iteration === 0) this.refreshNow();
     this.#iteration = iteration;
@@ -187,8 +204,23 @@ export class IterationContext extends Context {
       previous === undefined || previous.type.base === Types.Error.base
         ? Value.null(IterationContext.previousConstant)
         : previous;
-    this.setConstant(IterationContext.previousConstant, this.#previous);
+    // The container of PREV is reused; a new constant only if the property was replaced from outside
+    if (
+      this.#previousContainer !== undefined &&
+      this.getProperty(IterationContext.previousConstant) === this.#previousContainer
+    ) {
+      this.#previousContainer.replace(this.#previous);
+    } else {
+      this.setConstant(IterationContext.previousConstant, this.#previous);
+    }
     this.preExecute();
+  }
+}
+
+/** Constant whose value the host side replaces between executions (`PREV`); a formula still cannot change it. */
+class ReplaceableConstant extends Constant {
+  replace(value: IValue): void {
+    this.store(value);
   }
 }
 
@@ -278,7 +310,7 @@ export class TimeContext extends Context {
     if (!(deltaSeconds >= 0)) throw new RangeError("The delta time of a frame must not be negative.");
     if (frame > 0 && timeSeconds < this.#timeSeconds) throw new RangeError("The time of a frame never decreases.");
 
-    this.preExecute(); // loads the context constants before the first frame
+    this.loadOnce(); // loads the context constants before the first frame
     this.clearVariables();
 
     this.#frame = frame;

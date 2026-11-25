@@ -1,0 +1,9 @@
+$period = PARAMETERS.period
+$k = PARAMETERS.deviations
+$window = RANGE(SOURCE, MAX(I - $period + 1, @array_indexing), I)
+$complete = AND(LEN($window) == $period, LEN(FILTER($window, (e) => ISNULL(e))) == 0)
+
+$mean = IF($complete, AVG($window), 0)
+$sd = IF($complete, SQRT(AVG(MAP($window, (e) => (e - $mean) ^ 2))), 0)
+
+IF($complete, { upper: $mean + $k * $sd, middle: $mean, lower: $mean - $k * $sd }, null)

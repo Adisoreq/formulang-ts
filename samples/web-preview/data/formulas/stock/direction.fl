@@ -1,0 +1,1 @@
+IF(IS_BULLISH(CANDLES[I]), "bullish", IF(IS_BEARISH(CANDLES[I]), "bearish", "doji"))

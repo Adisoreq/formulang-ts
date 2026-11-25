@@ -1,0 +1,26 @@
+<#    FormuLang Stock    ##
+---------------------------
+Simple Moving Average (SMA)
+---------------------------
+Indicator by:
+  R. H. Hooker
+Script by:
+  A. Piznal
+---------------------------
+Desctiption:
+  Simple Moving Average is
+  common indicator for
+  predicting the trend by
+  averaging close values.
+---------------------------
+Parameters:
+  - period - indicates the
+    candle window size
+------------------------ #> 
+
+REQUIRE "stock-1.0+"
+
+$period = PARAMETERS.period
+$skip = I < $period
+
+IF($skip, null, AVG(RANGE(CLOSE, I - $period, I)))

@@ -1,0 +1,5 @@
+$b = LOAD_INDICATOR("BOLLINGER")[I]
+
+IF(ISNULL($b),
+   NEUTRAL,
+   IF(CLOSE[I] < $b.lower, BUY, IF(CLOSE[I] > $b.upper, SELL, NEUTRAL)))

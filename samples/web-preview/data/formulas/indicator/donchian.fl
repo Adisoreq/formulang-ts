@@ -1,0 +1,6 @@
+$period = PARAMETERS.period
+$from = MAX(I - $period + 1, @array_indexing)
+
+IF(I - $from + 1 < $period,
+   null,
+   { upper: MAX(RANGE(HIGH, $from, I)), lower: MIN(RANGE(LOW, $from, I)) })

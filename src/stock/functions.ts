@@ -1,4 +1,5 @@
 import type { IObject, IValue } from "../abstractions/primitives.js";
+import { FunctionType } from "../abstractions/primitives.js";
 import type { IContext } from "../abstractions/structures.js";
 import {
   ArgumentTemplate,
@@ -22,25 +23,35 @@ const invalidKeyError = (message: string): IValue => Value.error(Errors.invalidK
 
 /** `CANDLE(object)`: docs/standards/stock/functions/CANDLE.md */
 export function createCandleFunction(): FlFunction {
-  return new FlFunction(StockFunctionNames.candle, [
-    new FunctionOverload([ArgumentTemplate.of("object", Types.Object)], (a) => {
-      const candle = candleFromObject(a[0]!.raw as IObject);
-      return candle !== undefined
-        ? candleToValue(candle)
-        : operationError(`Object does not meet the requirements to be <${CANDLE_TYPE}>.`);
-    }),
-  ]);
+  return new FlFunction(
+    StockFunctionNames.candle,
+    [
+      new FunctionOverload([ArgumentTemplate.of("object", Types.Object)], (a) => {
+        const candle = candleFromObject(a[0]!.raw as IObject);
+        return candle !== undefined
+          ? candleToValue(candle)
+          : operationError(`Object does not meet the requirements to be <${CANDLE_TYPE}>.`);
+      }),
+    ],
+    FunctionType.Function,
+    { sideEffectFree: true },
+  );
 }
 
 function direction(name: string, check: (open: number, close: number) => boolean): FlFunction {
-  return new FlFunction(name, [
-    new FunctionOverload([ArgumentTemplate.of("candle", Types.of(TypeNames.Object, CANDLE_TYPE))], (a) => {
-      const candle = a[0]!.raw as IObject;
-      const open = candle.getProperty("open")!.getValue().raw as number;
-      const close = candle.getProperty("close")!.getValue().raw as number;
-      return Value.boolean(check(open, close));
-    }),
-  ]);
+  return new FlFunction(
+    name,
+    [
+      new FunctionOverload([ArgumentTemplate.of("candle", Types.of(TypeNames.Object, CANDLE_TYPE))], (a) => {
+        const candle = a[0]!.raw as IObject;
+        const open = candle.getProperty("open")!.getValue().raw as number;
+        const close = candle.getProperty("close")!.getValue().raw as number;
+        return Value.boolean(check(open, close));
+      }),
+    ],
+    FunctionType.Function,
+    { sideEffectFree: true },
+  );
 }
 
 /** `IS_BULLISH(candle)`: `close > open` (docs/standards/stock/functions/IS_BULLISH.md). */
@@ -111,15 +122,21 @@ export class LoadIndicatorFunction extends FlFunction {
     const id = ArgumentTemplate.of("id", Types.Text);
     const parameters = ArgumentTemplate.of("parameters", Types.Object);
     const source = ArgumentTemplate.of("source", Types.Array);
-    super(StockFunctionNames.loadIndicator, [
-      new FunctionOverload([id], (a, c) => computeIndicator(registry, a[0]!.raw as string, undefined, undefined, c)),
-      new FunctionOverload([id, parameters], (a, c) =>
-        computeIndicator(registry, a[0]!.raw as string, a[1]!.raw as IObject, undefined, c),
-      ),
-      new FunctionOverload([id, parameters, source], (a, c) =>
-        computeIndicator(registry, a[0]!.raw as string, a[1]!.raw as IObject, a[2], c),
-      ),
-    ]);
+    super(
+      StockFunctionNames.loadIndicator,
+      [
+        new FunctionOverload([id], (a, c) => computeIndicator(registry, a[0]!.raw as string, undefined, undefined, c)),
+        new FunctionOverload([id, parameters], (a, c) =>
+          computeIndicator(registry, a[0]!.raw as string, a[1]!.raw as IObject, undefined, c),
+        ),
+        new FunctionOverload([id, parameters, source], (a, c) =>
+          computeIndicator(registry, a[0]!.raw as string, a[1]!.raw as IObject, a[2], c),
+        ),
+        // Computing a series changes nothing for the caller; the stored series are only reused
+      ],
+      FunctionType.Function,
+      { sideEffectFree: true },
+    );
   }
 }
 
@@ -141,7 +158,7 @@ function computeIndicator(
   if (elements.length !== series.count) {
     return operationError(`The source has ${elements.length} elements, but there are ${series.count} candles.`);
   }
-  if (elements.some((e) => e.type.base !== TypeNames.Number && e.type.base !== TypeNames.Null)) {
+  if (!series.isValidSource(elements)) {
     return operationError("Every element of the source must be a Number or null.");
   }
   const key = `indicator|${id}|${serialize(prepared.parameters)}|${series.sourceKey(elements)}`;
@@ -167,12 +184,17 @@ export class LoadPatternFunction extends FlFunction {
   constructor(readonly registry: FormulaRegistry) {
     const id = ArgumentTemplate.of("id", Types.Text);
     const parameters = ArgumentTemplate.of("parameters", Types.Object);
-    super(StockFunctionNames.loadPattern, [
-      new FunctionOverload([id], (a, c) => computePattern(registry, a[0]!.raw as string, undefined, c)),
-      new FunctionOverload([id, parameters], (a, c) =>
-        computePattern(registry, a[0]!.raw as string, a[1]!.raw as IObject, c),
-      ),
-    ]);
+    super(
+      StockFunctionNames.loadPattern,
+      [
+        new FunctionOverload([id], (a, c) => computePattern(registry, a[0]!.raw as string, undefined, c)),
+        new FunctionOverload([id, parameters], (a, c) =>
+          computePattern(registry, a[0]!.raw as string, a[1]!.raw as IObject, c),
+        ),
+      ],
+      FunctionType.Function,
+      { sideEffectFree: true },
+    );
   }
 }
 

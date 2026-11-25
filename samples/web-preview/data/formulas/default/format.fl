@@ -1,0 +1,7 @@
+$items = [{ name: "Coffee", price: 12.5 }, { name: "Croissant", price: 7.25 }]
+$total = SUM(MAP($items, (e) => e.price))
+
+$lines = MAP($items, (e, i) => FORMAT("{0}. {1} – {2:.2} zł", [i + 1, e.name, e.price]))
+$summary = FORMAT("Total: {total:.2} zł ({count} items)", { total: $total, count: LEN($items) })
+
+JOIN($lines, "\n") + "\n" + $summary

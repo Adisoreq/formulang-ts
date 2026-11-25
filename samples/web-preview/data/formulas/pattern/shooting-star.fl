@@ -1,0 +1,7 @@
+$c = CANDLES[I]
+$body = ABS($c.close - $c.open)
+$range = $c.high - $c.low
+$lower = MIN($c.open, $c.close) - $c.low
+$upper = $c.high - MAX($c.open, $c.close)
+
+AND($range > 0, AND($upper >= PARAMETERS.shadow * $body, $lower <= PARAMETERS.max_lower * $range))

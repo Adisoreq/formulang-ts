@@ -1,0 +1,9 @@
+$a = 14          # a line comment ends with the line
+$b = <# a scoped comment #> 24
+
+<#
+A scoped comment may span
+several lines.
+#>
+
+$a + $b

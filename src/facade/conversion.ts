@@ -5,11 +5,11 @@
  */
 import type { IFunction } from "../abstractions/functions.js";
 import type { IError, IObject, IValue } from "../abstractions/primitives.js";
-import { PrimitiveType } from "../abstractions/primitives.js";
+import { FunctionType, PrimitiveType } from "../abstractions/primitives.js";
 import type { IContext } from "../abstractions/structures.js";
 import { Errors } from "../core/errors.js";
 import { ArgumentTemplate } from "../core/functions/argument-template.js";
-import { FlFunction, FunctionOverload } from "../core/functions/function.js";
+import { FlFunction, FunctionOverload, type FunctionOptions } from "../core/functions/function.js";
 import { FlError } from "../core/primitives/error.js";
 import { FlObject } from "../core/primitives/object.js";
 import { TypeNames } from "../core/primitives/types.js";
@@ -81,21 +81,27 @@ function isError(value: unknown): value is IError {
 /**
  * Wraps a JavaScript function as a named FormuLang function. It accepts any arguments; when one of them is an
  * Error, the function is not called and the Error is returned (like the overloads of the Core functions).
- * A thrown exception becomes an `OPERATION_ERROR`.
+ * A thrown exception becomes an `OPERATION_ERROR`. Mark it with `{ sideEffectFree: true }` if it only computes its
+ * result (see {@link FunctionOptions.sideEffectFree}).
  */
-export function hostFunction(name: string, implementation: HostFunction): FlFunction {
-  return new FlFunction(name, [
-    new FunctionOverload([ArgumentTemplate.any("arguments", { optional: true, multiple: true })], (args, context) => {
-      const error = args.find((arg) => arg.type.base === TypeNames.Error);
-      if (error !== undefined) return error;
-      try {
-        return fromJs(implementation(...args.map((arg) => toJs(arg, context))));
-      } catch (exception) {
-        const message = exception instanceof Error ? exception.message : String(exception);
-        return Value.error(Errors.operationError(`"${name}" failed: ${message}`));
-      }
-    }),
-  ]);
+export function hostFunction(name: string, implementation: HostFunction, options: FunctionOptions = {}): FlFunction {
+  return new FlFunction(
+    name,
+    [
+      new FunctionOverload([ArgumentTemplate.any("arguments", { optional: true, multiple: true })], (args, context) => {
+        const error = args.find((arg) => arg.type.base === TypeNames.Error);
+        if (error !== undefined) return error;
+        try {
+          return fromJs(implementation(...args.map((arg) => toJs(arg, context))));
+        } catch (exception) {
+          const message = exception instanceof Error ? exception.message : String(exception);
+          return Value.error(Errors.operationError(`"${name}" failed: ${message}`));
+        }
+      }),
+    ],
+    FunctionType.Function,
+    options,
+  );
 }
 
 /**

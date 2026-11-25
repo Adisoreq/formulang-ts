@@ -1,0 +1,7 @@
+$n = PARAMETERS.count
+$from = MAX(I - $n + 1, @array_indexing)
+
+# Every candle of the window is bullish and closes higher than the previous one
+$rising = (k) => AND(IS_BULLISH(CANDLES[k]), IF(k == $from, true, CLOSE[k] > CLOSE[MAX(k - 1, @array_indexing)]))
+
+AND(I - $n + 1 >= @array_indexing, ALL(SEQ($n, 1, $from), $rising))

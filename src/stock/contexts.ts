@@ -1,6 +1,6 @@
 import type { IObject, IValue } from "../abstractions/primitives.js";
 import type { ContextType, IContext, IEnvironment } from "../abstractions/structures.js";
-import { Errors, Executor, FlObject, IterationContext, Value, arrayToString } from "../core/index.js";
+import { Errors, Executor, FlObject, IterationContext, TypeNames, Value } from "../core/index.js";
 import { type Candle, candleToValue, isValidCandle } from "./candle.js";
 import { STOCK_IDENTIFIER, StockFunctionNames } from "./names.js";
 
@@ -58,14 +58,50 @@ export class StockSeries {
     this.#stored.set(key, series);
   }
 
-  /** Key of a source array in the indicator cache: `CLOSE`, or the serialized array. */
+  readonly #validSources = new WeakSet<object>();
+
+  /**
+   * Whether every element of a source is a Number or `null`. A source is an immutable array, so the check runs once
+   * for every array (`CLOSE` never), not in every iteration of the caller.
+   */
+  isValidSource(source: readonly IValue[]): boolean {
+    if (source === this.close.raw || this.#validSources.has(source)) return true;
+    const valid = source.every((e) => e.type.base === TypeNames.Number || e.type.base === TypeNames.Null);
+    if (valid) this.#validSources.add(source);
+    return valid;
+  }
+
+  /**
+   * Key of a source array in the indicator cache: `CLOSE`, or a key of the elements. Sources with the same elements
+   * get the same key, also when the formula builds a new array in every iteration (e.g. with `MAP`). The elements
+   * (Numbers and `null`, checked by the caller) are compared as numbers instead of being serialized to text.
+   */
   sourceKey(source: readonly IValue[]): string {
     if (source === this.close.raw) return "CLOSE";
     let key = this.#sourceKeys.get(source);
     if (key === undefined) {
-      key = arrayToString(source);
+      key = this.#contentKey(source);
       this.#sourceKeys.set(source, key);
     }
+    return key;
+  }
+
+  readonly #contents = new Map<number, { readonly elements: readonly (number | null)[]; readonly key: string }[]>();
+  #sourceCount = 0;
+
+  #contentKey(source: readonly IValue[]): string {
+    const elements = source.map((e) => (typeof e.raw === "number" ? e.raw : null));
+    let hash = elements.length;
+    for (const e of elements) hash = (Math.imul(hash, 31) + (e === null ? 7 : Math.floor(e * 1e6) | 0)) | 0;
+    let candidates = this.#contents.get(hash);
+    if (candidates === undefined) this.#contents.set(hash, (candidates = []));
+    for (const known of candidates) {
+      if (known.elements.length === elements.length && known.elements.every((e, i) => e === elements[i])) {
+        return known.key;
+      }
+    }
+    const key = `SOURCE#${this.#sourceCount++}`;
+    candidates.push({ elements, key });
     return key;
   }
 }

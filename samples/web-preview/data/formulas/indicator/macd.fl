@@ -1,0 +1,12 @@
+$short = LOAD_INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
+$long = LOAD_INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
+
+# MACD line for every candle: the two series joined element by element
+$line = MAP($short, (s, i) => IF(OR(ISNULL(s), ISNULL($long[i])), null, s - $long[i]))
+
+$macd = $line[I]
+$signal = LOAD_INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
+
+IF(OR(ISNULL($macd), ISNULL($signal)),
+   null,
+   { macd: $macd, signal: $signal, histogram: $macd - $signal })

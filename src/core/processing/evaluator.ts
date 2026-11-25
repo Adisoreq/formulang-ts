@@ -11,10 +11,10 @@ import type {
   IVariableExpression,
 } from "../../abstractions/processing.js";
 import { ExpressionKind, VariableScope } from "../../abstractions/processing.js";
-import type { IContext } from "../../abstractions/structures.js";
+import type { IContext, IEnvironment } from "../../abstractions/structures.js";
 import { Errors } from "../errors.js";
-import { isProcedure } from "../functions/function.js";
-import { Types } from "../primitives/types.js";
+import { FlFunction, isProcedure } from "../functions/function.js";
+import { TypeNames, Types } from "../primitives/types.js";
 import { Value, isFailure } from "../primitives/value.js";
 import { VariableReference } from "../primitives/variable-reference.js";
 import { suppressErrors } from "../structures/context-variables.js";
@@ -57,11 +57,43 @@ export class Evaluator implements IEvaluator {
   /** @internal Evaluates a sequence of the formula or a lambda body. */
   evaluateSequence(sequence: ISequence, scope: Scope, isFormulaSequence: boolean): IValue {
     const results = new Map<IExpressionNode, IValue>();
+    if (skipsBranches(sequence, scope.context.environment)) {
+      return this.#evaluateSelected(sequence.root, sequence, results, scope, isFormulaSequence);
+    }
     for (const node of sequence.queue) {
       const declaration = isFormulaSequence && node === sequence.root;
       results.set(node, this.#evaluateNode(node, results, scope, declaration));
     }
     return results.get(sequence.root)!;
+  }
+
+  /**
+   * Evaluates a node after its children, top-down, and only the selected branch of an `IF` whose condition is a
+   * Boolean. A condition of another type goes to `IF` with both branches, as in the queue.
+   */
+  #evaluateSelected(
+    node: IExpressionNode,
+    sequence: ISequence,
+    results: Map<IExpressionNode, IValue>,
+    scope: Scope,
+    isFormulaSequence: boolean,
+  ): IValue {
+    const known = results.get(node);
+    if (known !== undefined) return known;
+    if (node.kind === ExpressionKind.FunctionCall && node.name === IF_NAME && node.children.length === 3) {
+      const condition = this.#evaluateSelected(node.children[0]!, sequence, results, scope, isFormulaSequence);
+      if (condition.type.base === TypeNames.Boolean) {
+        // IF(true, then, else) returns then, IF(false, then, else) returns else, unchanged
+        const selected = node.children[condition.raw === true ? 1 : 2]!;
+        const value = this.#evaluateSelected(selected, sequence, results, scope, isFormulaSequence);
+        results.set(node, value);
+        return value;
+      }
+    }
+    for (const child of node.children) this.#evaluateSelected(child, sequence, results, scope, isFormulaSequence);
+    const value = this.#evaluateNode(node, results, scope, isFormulaSequence && node === sequence.root);
+    results.set(node, value);
+    return value;
   }
 
   #evaluateNode(
@@ -90,6 +122,79 @@ export class Evaluator implements IEvaluator {
         return call(node, results, scope.context);
     }
   }
+}
+
+// Skipping the branch of IF that is not selected (an optimization with the same result)
+//
+// IF receives both branches computed (docs/standards/core/functions/IF.md), so a branch that is not selected is
+// computed only for its side effects, and its value (even an Error) is discarded. In a sequence where every function
+// is side-effect free, the branch has no effects either, so it can be skipped, and the order of the nodes cannot
+// change a result. Only these sequences are evaluated top-down; the others follow the queue.
+
+const IF_NAME = "IF";
+
+const branchAnalyses = new WeakMap<ISequence, { readonly environment: IEnvironment; readonly skips: boolean }>();
+
+/**
+ * Whether the sequence has an `IF` and only side-effect-free functions, apart from an assignment at its root
+ * (e.g. `$x = IF(...)`). The result is stored for every sequence and environment.
+ */
+function skipsBranches(sequence: ISequence, environment: IEnvironment): boolean {
+  const known = branchAnalyses.get(sequence);
+  if (known?.environment === environment) return known.skips;
+  const state = { hasIf: false };
+  const root = sequence.root;
+  const rootFunction = root.kind === ExpressionKind.FunctionCall ? environment.getFunction(root.name) : undefined;
+  const pure =
+    root.kind === ExpressionKind.FunctionCall &&
+    rootFunction !== undefined &&
+    isProcedure(rootFunction) &&
+    rootFunction.takesVariable &&
+    root.children[0]?.kind === ExpressionKind.Variable
+      ? root.children.slice(1).every((child) => isSideEffectFree(child, environment, state))
+      : isSideEffectFree(root, environment, state);
+  const skips = pure && state.hasIf;
+  branchAnalyses.set(sequence, { environment, skips });
+  return skips;
+}
+
+function isSideEffectFree(node: IExpressionNode, environment: IEnvironment, state: { hasIf: boolean }): boolean {
+  switch (node.kind) {
+    case ExpressionKind.Value:
+    case ExpressionKind.Variable:
+    case ExpressionKind.Constant:
+    case ExpressionKind.Parameter:
+      return true;
+    case ExpressionKind.Lambda:
+      return isSideEffectFree(node.body.root, environment, state);
+    case ExpressionKind.FunctionCall: {
+      const fn = environment.getFunction(node.name);
+      if (!(fn instanceof FlFunction) || !fn.sideEffectFree) return false;
+      if (node.name === IF_NAME) state.hasIf = true;
+      return node.children.every(
+        // A delegate argument is invoked by the function: it must be a lambda (checked as a node) or a side-effect-free
+        // named function, not a delegate from a variable whose body is not known here
+        (child, i) =>
+          (!takesDelegate(fn, i) || isKnownDelegate(child, environment)) && isSideEffectFree(child, environment, state),
+      );
+    }
+  }
+}
+
+function takesDelegate(fn: FlFunction, position: number): boolean {
+  return fn.overloads.some((overload) => {
+    const template = overload.template;
+    const last = template[template.length - 1];
+    const at = template[position] ?? (last?.multiple ? last : undefined);
+    return at !== undefined && !at.anyType && at.type.base === TypeNames.Delegate;
+  });
+}
+
+function isKnownDelegate(node: IExpressionNode, environment: IEnvironment): boolean {
+  if (node.kind === ExpressionKind.Lambda || node.kind === ExpressionKind.Value) return true;
+  if (node.kind !== ExpressionKind.Constant) return false;
+  const fn = environment.getFunction(node.name);
+  return fn === undefined || (fn instanceof FlFunction && fn.sideEffectFree);
 }
 
 function call(node: ICallExpression, results: ReadonlyMap<IExpressionNode, IValue>, context: IContext): IValue {

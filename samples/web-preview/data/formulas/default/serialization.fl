@@ -1,0 +1,4 @@
+@decimal_place = 2
+@split_object = true
+@include_object_class = true
+{ price: 19.999, items: SEQ(3), candle: CANDLE({ open: 1, high: 2, low: 0.5, close: 1.5 }) }

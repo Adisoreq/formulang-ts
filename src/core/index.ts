@@ -15,6 +15,7 @@ export {
   Procedure,
   isProcedure,
   type FunctionImplementation,
+  type FunctionOptions,
   type ProcedureOptions,
 } from "./functions/function.js";
 

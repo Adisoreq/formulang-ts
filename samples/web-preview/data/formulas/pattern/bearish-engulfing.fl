@@ -1,0 +1,6 @@
+$prev = CANDLES[MAX(I - 1, @array_indexing)]
+$curr = CANDLES[I]
+
+$covers = AND($curr.open >= $prev.close, $curr.close <= $prev.open)
+
+AND(I > @array_indexing, AND(IS_BULLISH($prev), AND(IS_BEARISH($curr), $covers)))

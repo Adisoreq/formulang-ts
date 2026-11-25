@@ -1,0 +1,5 @@
+$name = "  formulang  "
+$clean = UPPERCASE(TRIM($name))
+$word = "Zażółć gęślą jaźń"
+
+[$clean, LEN($clean), SPLIT("a,b,c", ","), REPLACE($clean, "LANG", "-LANG"), LEN($word), REVERSE($word)]

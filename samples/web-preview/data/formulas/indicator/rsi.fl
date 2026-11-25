@@ -1,0 +1,11 @@
+$period = PARAMETERS.period
+$ready = I - @array_indexing >= $period
+
+# Changes of the closing price within the window
+$from = MAX(I - $period + 1, @array_indexing + 1)
+$changes = MAP(SEQ(MAX(I - $from + 1, 0), 1, $from), (k) => CLOSE[k] - CLOSE[k - 1])
+
+$gain = SUM(MAP($changes, (c) => MAX(c, 0))) / $period
+$loss = SUM(MAP($changes, (c) => MAX(-c, 0))) / $period
+
+IF(NOT($ready), null, IF($loss == 0, 100, 100 - 100 / (1 + $gain / $loss)))

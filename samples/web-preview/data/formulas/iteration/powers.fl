@@ -1,0 +1,1 @@
+IF(ISNULL(PREV), 1, PREV * 2)

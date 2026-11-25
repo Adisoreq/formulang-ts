@@ -161,6 +161,15 @@ executor.execute('HYPOT(3, "4")', environment).error.name;        // "ARGUMENT_E
 
 `ArgumentTemplate.of(name, type, { optional, multiple })`, `ArgumentTemplate.arrayOf(name, elementType)` (e.g. `Array<Number>`) and `ArgumentTemplate.any(name)` follow the [argument templates](https://github.com/Adisoreq/FormuLang/blob/main/docs/implementation/argument_template.md) of the standard.
 
+A function that only computes its result from its arguments, and changes nothing in the context or in the host application, can be marked as side-effect free:
+
+```ts
+new FlFunction("HYPOT", [/* overloads */], FunctionType.Function, { sideEffectFree: true });
+hostFunction("TAX", (price) => price * 0.23, { sideEffectFree: true });
+```
+
+`IF` receives both branches computed (the Core standard), so the branch that is not selected is computed only for its side effects. In a sequence where every function is side-effect free, the evaluator skips that branch, which gives the same result much faster, e.g. in an indicator that computes its first value differently: `IF(ISNULL(PREV), AVG(...), PREV + ...)`. All Core and Stock functions are side-effect free. A function that is not marked (the default), e.g. one that records diagnostics in the host application, is always called, and so is every function in the same sequence.
+
 ### Custom context types
 
 The host application chooses the context type, because it has the data a formula works on. A context type derives from `Context` and loads its constants in `loadContextData()`, which runs once, before the first execution:

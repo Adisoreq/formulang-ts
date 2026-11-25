@@ -1,0 +1,7 @@
+# In the first iteration, the previous candle is the current one
+$prev = CANDLES[MAX(I - 1, @array_indexing)]
+$curr = CANDLES[I]
+
+$covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
+
+AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers)))

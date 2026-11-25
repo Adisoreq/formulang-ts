@@ -44,7 +44,8 @@ Every indicator and pattern of the preview is in the formula registry of the env
 
 | File                                           | Content                                                                                                     |
 | :--------------------------------------------- | :---------------------------------------------------------------------------------------------------------- |
-| [src/model/examples.ts](src/model/examples.ts) | Standards, context types and their examples: the configurations of the patterns, indicators and strategies. |
+| [src/model/examples.ts](src/model/examples.ts) | Standards, context types and their examples: the configurations of the patterns, indicators and strategies. The formula of every example is loaded from its file. |
+| [data/formulas](data/formulas) | Formulas of the examples: `<context type>/<example id>.fl` (for example `indicator/sma.fl`). A new example needs its entry in `examples.ts` and its file. |
 | [src/model/engine.ts](src/model/engine.ts)     | Execution of the formulas with FormuLang-TS in every context type.                                          |
 | [src/model/language.ts](src/model/language.ts) | Syntax highlighting and suggestions of the editor.                                                          |
 | [src/model/candles.ts](src/model/candles.ts)   | Mock candles: a seeded random walk with trend regimes.                                                      |

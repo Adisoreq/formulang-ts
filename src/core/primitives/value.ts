@@ -11,13 +11,21 @@ import { TypeNames, Types } from "./types.js";
  */
 export class Value implements IValue {
   readonly primitiveType = PrimitiveType.Value;
+  // Expression of a Number made by Value.number without one is formatted when it is first read: most numbers
+  // computed by a formula are never shown, and formatting every one of them was a large part of the execution time
+  #expression: string | undefined;
 
   constructor(
     readonly raw: unknown,
     readonly type: IType,
-    readonly expression: string = "",
+    expression: string = "",
   ) {
+    this.#expression = expression;
     Object.freeze(this);
+  }
+
+  get expression(): string {
+    return (this.#expression ??= numberToString(this.raw as number));
   }
 
   get canAccessValue(): boolean {
@@ -89,8 +97,10 @@ export class Value implements IValue {
     return new Value(value, Types.Boolean, expression);
   }
 
-  static number(value: number, expression: string = numberToString(value)): Value {
-    return new Value(value, Types.Number, expression);
+  static number(value: number, expression?: string): Value {
+    const result = new Value(value, Types.Number, expression);
+    if (expression === undefined) result.#expression = undefined;
+    return result;
   }
 
   static text(value: string, expression: string = textToLiteral(value)): Value {

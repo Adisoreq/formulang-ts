@@ -1,0 +1,4 @@
+@suppress_errors = true
+$a = DIV(1, 0)
+$b = ISNULL($a)
+IF($b, "the error was suppressed", "no error")

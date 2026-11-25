@@ -106,238 +106,172 @@ export const STANDARDS: readonly StandardDefinition[] = [
 
 export const CONTEXTS = STANDARDS.flatMap((standard) => standard.contexts);
 
+// Formulas: data/formulas/<context kind>/<example id>.fl
+
+const FORMULA_FILES = import.meta.glob<string>("../../data/formulas/*/*.fl", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
+/** Text of `data/formulas/<kind>/<id>.fl`, with LF line endings and without the final line break of the file. */
+const loadFormula = (kind: ContextKind, id: string): string => {
+  const text = FORMULA_FILES[`../../data/formulas/${kind}/${id}.fl`];
+  if (text === undefined) throw new Error(`Missing formula file: data/formulas/${kind}/${id}.fl`);
+  return text.replace(/\r\n?/g, "\n").replace(/\n$/, "");
+};
+
+/** Adds to every example the formula of its file. */
+const withFormulas = <T extends Example>(kind: ContextKind, examples: Omit<T, "formula">[]): T[] =>
+  examples.map((example) => ({ ...example, formula: loadFormula(kind, example.id) }) as T);
+
 // Core
 
-const DEFAULT_EXAMPLES: Example[] = [
+const DEFAULT_EXAMPLES: Example[] = withFormulas<Example>("default", [
   {
     id: "circle",
     name: "Circle area",
     description: "Initial assignment and a constant of the environment.",
-    formula: "$r := 2.5\nPI * $r ^ 2",
   },
   {
     id: "interest",
     name: "Compound interest",
     description: "Variables, rounding and text concatenation.",
-    formula: `# Compound interest calculator
-$principal := 1000
-$rate := 0.05
-$years := 10
-
-$multiplier := (1 + $rate) ^ $years
-$result := ROUND($principal * $multiplier, 2)
-
-"Final amount: " + TEXT($result)`,
   },
   {
     id: "statistics",
     name: "Statistics",
     description: "Arrays, lambdas and an object literal.",
-    formula: `# Mean and standard deviation of a data set
-$data = [2, 4, 4, 4, 5, 5, 7, 9]
-$mean = AVG($data)
-$stdev = SQRT(SUM(MAP($data, (x) => (x - $mean) ^ 2)) / LEN($data))
-
-{ mean: $mean, stdev: $stdev, above_mean: FILTER($data, (x) => x > $mean) }`,
   },
   {
     id: "text",
     name: "Text functions",
     description: "Text functions; a character is one Unicode code point.",
-    formula: `$name = "  formulang  "
-$clean = UPPERCASE(TRIM($name))
-$word = "Zażółć gęślą jaźń"
-
-[$clean, LEN($clean), SPLIT("a,b,c", ","), REPLACE($clean, "LANG", "-LANG"), LEN($word), REVERSE($word)]`,
   },
   {
     id: "format",
     name: "Formatting",
     description: "FORMAT with sequential, indexed and named placeholders.",
-    formula: `$items = [{ name: "Coffee", price: 12.5 }, { name: "Croissant", price: 7.25 }]
-$total = SUM(MAP($items, (e) => e.price))
-
-$lines = MAP($items, (e, i) => FORMAT("{0}. {1} – {2:.2} zł", [i + 1, e.name, e.price]))
-$summary = FORMAT("Total: {total:.2} zł ({count} items)", { total: $total, count: LEN($items) })
-
-JOIN($lines, "\\n") + "\\n" + $summary`,
   },
   {
     id: "time",
     name: "Time functions",
     description: "NOW, the parts of a date, DATE and FORMAT_TIME.",
-    formula: `<# NOW is the moment of the execution: Unix time in milliseconds, UTC #>
-@time_offset = 60    # local time UTC+1, only for this execution
-
-$days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-$today = DATE(YEAR(NOW), MONTH(NOW), DAY(NOW))
-$new_year = DATE(YEAR(NOW) + 1, 1, 1)
-
-FORMAT("{} {} · {} days until the new year", [
-    $days[WEEKDAY(NOW) - 1],
-    FORMAT_TIME(NOW, "DD.MM.YYYY hh:mm:ss"),
-    ($new_year - $today) / (24 * 60 * 60 * 1000)
-])`,
   },
   {
     id: "comments",
     name: "Comments",
     description: "Line comments and scoped comments that may span several lines.",
-    formula: `$a = 14          # a line comment ends with the line
-$b = <# a scoped comment #> 24
-
-<#
-A scoped comment may span
-several lines.
-#>
-
-$a + $b`,
   },
   {
     id: "serialization",
     name: "Serialization",
     description: "Serialization variables changed by the formula.",
-    formula: `@decimal_place = 2
-@split_object = true
-@include_object_class = true
-{ price: 19.999, items: SEQ(3), candle: CANDLE({ open: 1, high: 2, low: 0.5, close: 1.5 }) }`,
   },
   {
     id: "errors",
     name: "Error handling",
     description: "An error replaced with null by @suppress_errors.",
-    formula: `@suppress_errors = true
-$a = DIV(1, 0)
-$b = ISNULL($a)
-IF($b, "the error was suppressed", "no error")`,
   },
   {
     id: "validation",
     name: "Validation errors",
     description: "Validation reports every problem at once.",
-    formula: `$x = (1 + 2
-$y = "not closed`,
   },
-];
+]);
 
-const ITERATION_EXAMPLES: Example[] = [
+const ITERATION_EXAMPLES: Example[] = withFormulas<Example>("iteration", [
   {
     id: "constants",
     name: "Constants",
     description: "The constants of every iteration.",
-    formula: "[I, N, PREV]",
   },
   {
     id: "powers",
     name: "Powers of two",
     description: "PREV carries the result of the previous iteration.",
-    formula: "IF(ISNULL(PREV), 1, PREV * 2)",
   },
   {
     id: "fibonacci",
     name: "Fibonacci",
     description: "A pair of numbers carried in PREV.",
-    formula: "IF(ISNULL(PREV), [0, 1], [PREV[1], PREV[0] + PREV[1]])",
   },
   {
     id: "progress",
     name: "Progress",
     description: "Text built from I and N.",
-    formula: 'TEXT(ROUND((I + 1) / N * 100, 0)) + "%"',
   },
-];
+]);
 
-const TIME_EXAMPLES: Example[] = [
+const TIME_EXAMPLES: Example[] = withFormulas<Example>("time", [
   {
     id: "motion",
     name: "Moving point",
     description: "Moves with 5 units per second and stops at 100; the position is carried in PREV.",
-    formula: `$speed = 5
-$position = IF(ISNULL(PREV), 0, PREV)
-MIN($position + $speed * DTIME_S, 100)`,
   },
   {
     id: "constants",
     name: "Constants",
     description: "The constants of every frame.",
-    formula: "[FRAME, ROUND(TIME_S, 2), ROUND(DTIME_MS, 1)]",
   },
   {
     id: "wave",
     name: "Sine wave",
     description: "A value that oscillates between -1 and 1 every 4 seconds.",
-    formula: "ROUND(SIN(TIME_S / 4 * 2 * PI), 3)",
   },
   {
     id: "rotation",
     name: "Rotation",
     description: "An angle that repeats every 4 seconds.",
-    formula: "ROUND(MOD(TIME_S / 4 * 360, 360), 1)",
   },
   {
     id: "clock",
     name: "Clock",
     description: "NOW is set again for every frame.",
-    formula: 'FORMAT_TIME(NOW, "hh:mm:ss.iii")',
   },
   {
     id: "stopwatch",
     name: "Stopwatch",
     description: "Frames per second measured from DTIME_S.",
-    formula: `$fps = IF(DTIME_S == 0, 0, 1 / DTIME_S)
-FORMAT("{:.1} s · frame {} · {:.0} fps", [TIME_S, FRAME, $fps])`,
   },
-];
+]);
 
 // Stock
 
-const STOCK_EXAMPLES: Example[] = [
+const STOCK_EXAMPLES: Example[] = withFormulas<Example>("stock", [
   {
     id: "range",
     name: "Candle range",
     description: "Difference of the highest and the lowest price of the candle.",
-    formula: "ROUND(HIGH[I] - LOW[I], 2)",
   },
   {
     id: "change",
     name: "Change %",
     description: "Change of the closing price from the previous candle.",
-    formula: "IF(I == @array_indexing, 0, ROUND((CLOSE[I] - CLOSE[I - 1]) / CLOSE[I - 1] * 100, 2))",
   },
   {
     id: "candle",
     name: "Current candle",
     description: "The candle itself, as an Object<Stock.Candle>.",
-    formula: "@include_object_class = true\nCANDLES[I]",
   },
   {
     id: "running-max",
     name: "Running maximum",
     description: "The highest close so far, carried in PREV.",
-    formula: "IF(ISNULL(PREV), CLOSE[I], MAX(PREV, CLOSE[I]))",
   },
   {
     id: "direction",
     name: "Direction",
     description: "IS_BULLISH and IS_BEARISH; a doji is neither.",
-    formula: 'IF(IS_BULLISH(CANDLES[I]), "bullish", IF(IS_BEARISH(CANDLES[I]), "bearish", "doji"))',
   },
-];
+]);
 
-/** The last `period` values of the source, and whether the window is complete. */
-const WINDOW = `$window = RANGE(SOURCE, MAX(I - $period + 1, @array_indexing), I)
-$complete = AND(LEN($window) == $period, LEN(FILTER($window, (e) => ISNULL(e))) == 0)`;
-
-export const INDICATORS: IndicatorConfig[] = [
+export const INDICATORS: IndicatorConfig[] = withFormulas<IndicatorConfig>("indicator", [
   {
     id: "sma",
     indicatorId: "SMA",
     name: "Simple moving average",
     description: "Average of the last `period` values of the source.",
-    formula: `$period = PARAMETERS.period
-${WINDOW}
-
-IF($complete, AVG($window), null)`,
     parameters: [{ id: "period", name: "Period", defaultValue: 20 }],
     series: [
       {
@@ -357,16 +291,6 @@ IF($complete, AVG($window), null)`,
     indicatorId: "EMA",
     name: "Exponential moving average",
     description: "Moving average that weights recent values more; recursive through PREV.",
-    formula: `$period = PARAMETERS.period
-$alpha = 2 / ($period + 1)
-$x = SOURCE[I]
-${WINDOW}
-
-IF(ISNULL($x),
-   null,
-   IF(NOT(ISNULL(PREV)),
-      $alpha * $x + (1 - $alpha) * PREV,
-      IF($complete, AVG($window), null)))`,
     parameters: [{ id: "period", name: "Period", defaultValue: 12 }],
     series: [
       {
@@ -386,14 +310,6 @@ IF(ISNULL($x),
     indicatorId: "BOLLINGER",
     name: "Bollinger bands",
     description: "Moving average with bands `deviations` standard deviations away.",
-    formula: `$period = PARAMETERS.period
-$k = PARAMETERS.deviations
-${WINDOW}
-
-$mean = IF($complete, AVG($window), 0)
-$sd = IF($complete, SQRT(AVG(MAP($window, (e) => (e - $mean) ^ 2))), 0)
-
-IF($complete, { upper: $mean + $k * $sd, middle: $mean, lower: $mean - $k * $sd }, null)`,
     parameters: [
       { id: "period", name: "Period", defaultValue: 20 },
       { id: "deviations", name: "Deviations", defaultValue: 2 },
@@ -432,12 +348,6 @@ IF($complete, { upper: $mean + $k * $sd, middle: $mean, lower: $mean - $k * $sd 
     indicatorId: "DONCHIAN",
     name: "Donchian channel",
     description: "Highest high and lowest low of the last `period` candles.",
-    formula: `$period = PARAMETERS.period
-$from = MAX(I - $period + 1, @array_indexing)
-
-IF(I - $from + 1 < $period,
-   null,
-   { upper: MAX(RANGE(HIGH, $from, I)), lower: MIN(RANGE(LOW, $from, I)) })`,
     parameters: [{ id: "period", name: "Period", defaultValue: 20 }],
     series: [
       {
@@ -465,7 +375,6 @@ IF(I - $from + 1 < $period,
     indicatorId: "TYPICAL",
     name: "Typical price",
     description: "(high + low + close) / 3, filled above and below its average.",
-    formula: "(HIGH[I] + LOW[I] + CLOSE[I]) / 3",
     parameters: [],
     series: [
       {
@@ -485,7 +394,6 @@ IF(I - $from + 1 < $period,
     indicatorId: "VOLUME_BARS",
     name: "Volume",
     description: "Traded volume of every candle, as a histogram at the bottom of the chart.",
-    formula: "VOLUME[I]",
     parameters: [],
     series: [
       {
@@ -505,18 +413,6 @@ IF(I - $from + 1 < $period,
     indicatorId: "MACD",
     name: "MACD",
     description: "Difference of two EMAs, its signal line and their histogram (docs/standards/stock/examples).",
-    formula: `$short = LOAD_INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
-$long = LOAD_INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
-
-# MACD line for every candle: the two series joined element by element
-$line = MAP($short, (s, i) => IF(OR(ISNULL(s), ISNULL($long[i])), null, s - $long[i]))
-
-$macd = $line[I]
-$signal = LOAD_INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
-
-IF(OR(ISNULL($macd), ISNULL($signal)),
-   null,
-   { macd: $macd, signal: $signal, histogram: $macd - $signal })`,
     parameters: [
       { id: "short_period", name: "Short period", defaultValue: 12 },
       { id: "long_period", name: "Long period", defaultValue: 26 },
@@ -556,17 +452,6 @@ IF(OR(ISNULL($macd), ISNULL($signal)),
     indicatorId: "RSI",
     name: "Relative strength index",
     description: "Average gain against average loss of the last `period` changes, from 0 to 100 (simple averages).",
-    formula: `$period = PARAMETERS.period
-$ready = I - @array_indexing >= $period
-
-# Changes of the closing price within the window
-$from = MAX(I - $period + 1, @array_indexing + 1)
-$changes = MAP(SEQ(MAX(I - $from + 1, 0), 1, $from), (k) => CLOSE[k] - CLOSE[k - 1])
-
-$gain = SUM(MAP($changes, (c) => MAX(c, 0))) / $period
-$loss = SUM(MAP($changes, (c) => MAX(-c, 0))) / $period
-
-IF(NOT($ready), null, IF($loss == 0, 100, 100 - 100 / (1 + $gain / $loss)))`,
     parameters: [{ id: "period", name: "Period", defaultValue: 14 }],
     series: [
       {
@@ -581,11 +466,9 @@ IF(NOT($ready), null, IF($loss == 0, 100, 100 - 100 / (1 + $gain / $loss)))`,
     seriesMode: "single",
     type: "oscillator",
   },
-];
+]);
 
-const PREVIOUS = "$prev = CANDLES[MAX(I - 1, @array_indexing)]\n$curr = CANDLES[I]";
-
-export const PATTERNS: PatternConfig[] = [
+export const PATTERNS: PatternConfig[] = withFormulas<PatternConfig>("pattern", [
   {
     id: "bullish-engulfing",
     patternId: "ENGULFING",
@@ -595,12 +478,6 @@ export const PATTERNS: PatternConfig[] = [
     type: "bullish",
     color: "green",
     length: 2,
-    formula: `# In the first iteration, the previous candle is the current one
-${PREVIOUS}
-
-$covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
-
-AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers)))`,
   },
   {
     id: "bearish-engulfing",
@@ -611,11 +488,6 @@ AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers))
     type: "bearish",
     color: "red",
     length: 2,
-    formula: `${PREVIOUS}
-
-$covers = AND($curr.open >= $prev.close, $curr.close <= $prev.open)
-
-AND(I > @array_indexing, AND(IS_BULLISH($prev), AND(IS_BEARISH($curr), $covers)))`,
   },
   {
     id: "hammer",
@@ -629,13 +501,6 @@ AND(I > @array_indexing, AND(IS_BULLISH($prev), AND(IS_BEARISH($curr), $covers))
     type: "bullish",
     color: "green",
     length: 1,
-    formula: `$c = CANDLES[I]
-$body = ABS($c.close - $c.open)
-$range = $c.high - $c.low
-$lower = MIN($c.open, $c.close) - $c.low
-$upper = $c.high - MAX($c.open, $c.close)
-
-AND($range > 0, AND($lower >= PARAMETERS.shadow * $body, $upper <= PARAMETERS.max_upper * $range))`,
   },
   {
     id: "shooting-star",
@@ -649,13 +514,6 @@ AND($range > 0, AND($lower >= PARAMETERS.shadow * $body, $upper <= PARAMETERS.ma
     type: "bearish",
     color: "red",
     length: 1,
-    formula: `$c = CANDLES[I]
-$body = ABS($c.close - $c.open)
-$range = $c.high - $c.low
-$lower = MIN($c.open, $c.close) - $c.low
-$upper = $c.high - MAX($c.open, $c.close)
-
-AND($range > 0, AND($upper >= PARAMETERS.shadow * $body, $lower <= PARAMETERS.max_lower * $range))`,
   },
   {
     id: "three-soldiers",
@@ -666,35 +524,16 @@ AND($range > 0, AND($upper >= PARAMETERS.shadow * $body, $lower <= PARAMETERS.ma
     type: "bullish",
     color: "green",
     length: 3,
-    formula: `$n = PARAMETERS.count
-$from = MAX(I - $n + 1, @array_indexing)
-
-# Every candle of the window is bullish and closes higher than the previous one
-$rising = (k) => AND(IS_BULLISH(CANDLES[k]), IF(k == $from, true, CLOSE[k] > CLOSE[MAX(k - 1, @array_indexing)]))
-
-AND(I - $n + 1 >= @array_indexing, ALL(SEQ($n, 1, $from), $rising))`,
   },
-];
+]);
 
-export const STRATEGIES: StrategyConfig[] = [
+export const STRATEGIES: StrategyConfig[] = withFormulas<StrategyConfig>("strategy", [
   {
     id: "crossover",
     name: "Moving average crossover",
     description: "Buys when the fast SMA crosses above the slow SMA, sells when it crosses below.",
     confidence: 1,
     lifetime: 5,
-    formula: `$fast = LOAD_INDICATOR("SMA", { period: 10 })
-$slow = LOAD_INDICATOR("SMA", { period: 30 })
-
-$p = MAX(I - 1, @array_indexing)
-$values = [$fast[$p], $slow[$p], $fast[I], $slow[I]]
-$ready = AND(I > @array_indexing, LEN(FILTER($values, (e) => ISNULL(e))) == 0)
-
-IF(NOT($ready),
-   NEUTRAL,
-   IF(AND($fast[$p] <= $slow[$p], $fast[I] > $slow[I]),
-      BUY,
-      IF(AND($fast[$p] >= $slow[$p], $fast[I] < $slow[I]), SELL, NEUTRAL)))`,
   },
   {
     id: "bollinger-reversion",
@@ -702,11 +541,6 @@ IF(NOT($ready),
     description: "Expects the price to return inside the Bollinger bands.",
     confidence: 0.6,
     lifetime: 3,
-    formula: `$b = LOAD_INDICATOR("BOLLINGER")[I]
-
-IF(ISNULL($b),
-   NEUTRAL,
-   IF(CLOSE[I] < $b.lower, BUY, IF(CLOSE[I] > $b.upper, SELL, NEUTRAL)))`,
   },
   {
     id: "momentum",
@@ -714,13 +548,6 @@ IF(ISNULL($b),
     description: "Follows the price at the moment its change over 10 candles exceeds 6%.",
     confidence: 0.4,
     lifetime: 2,
-    formula: `$n = 10
-$t = 0.06
-$now = IF(I < $n, 0, (CLOSE[I] - CLOSE[I - $n]) / CLOSE[I - $n])
-$before = IF(I < $n + 1, 0, (CLOSE[I - 1] - CLOSE[I - 1 - $n]) / CLOSE[I - 1 - $n])
-
-# A signal only when the change crosses the threshold
-IF(AND(ABS($now) > $t, ABS($before) <= $t), SIGN($now), NEUTRAL)`,
   },
   {
     id: "pattern-trend",
@@ -728,14 +555,8 @@ IF(AND(ABS($now) > $t, ABS($before) <= $t), SIGN($now), NEUTRAL)`,
     description: "Buys on a bullish engulfing pattern (LOAD_PATTERN) above the 20-candle SMA.",
     confidence: 1,
     lifetime: 4,
-    formula: `$engulfing = LOAD_PATTERN("ENGULFING")[I]
-$sma = LOAD_INDICATOR("SMA", { period: 20 })[I]
-
-IF(ISNULL($sma),
-   NEUTRAL,
-   IF(AND($engulfing, CLOSE[I] > $sma), BUY, NEUTRAL))`,
   },
-];
+]);
 
 /** Identifier of the empty formula that every context type offers next to its examples. */
 export const NEW_FORMULA = "new";

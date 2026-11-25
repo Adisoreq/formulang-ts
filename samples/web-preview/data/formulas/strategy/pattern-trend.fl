@@ -1,0 +1,6 @@
+$engulfing = LOAD_PATTERN("ENGULFING")[I]
+$sma = LOAD_INDICATOR("SMA", { period: 20 })[I]
+
+IF(ISNULL($sma),
+   NEUTRAL,
+   IF(AND($engulfing, CLOSE[I] > $sma), BUY, NEUTRAL))

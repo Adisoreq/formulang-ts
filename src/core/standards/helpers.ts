@@ -17,8 +17,9 @@ import { arrayIndexing } from "../structures/context-variables.js";
 
 // Definitions
 
+/** A Core function: every one only computes its result (procedures are defined separately). */
 export function fn(name: string, ...overloads: FunctionOverload[]): FlFunction {
-  return new FlFunction(name, overloads);
+  return new FlFunction(name, overloads, FunctionType.Function, { sideEffectFree: true });
 }
 
 export function overload(implementation: FunctionImplementation, ...template: IArgumentTemplate[]): FunctionOverload {
@@ -58,7 +59,7 @@ export function isError(value: IValue): boolean {
 export function N(value: number): IValue {
   if (!Number.isFinite(value)) return operationError("The result is not a finite number.");
   const normalized = value === 0 ? 0 : value;
-  return Value.number(normalized, numberToString(normalized));
+  return Value.number(normalized);
 }
 
 export const B = (value: boolean): IValue => Value.boolean(value);

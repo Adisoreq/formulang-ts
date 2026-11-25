@@ -40,6 +40,17 @@ function firstError(values: readonly IValue[]): IValue | undefined {
   return values.find((value) => value.type.base === TypeNames.Error);
 }
 
+/** Options of a named function. */
+export interface FunctionOptions {
+  /**
+   * The function only computes its result from its arguments: it changes nothing in the context, the environment or
+   * the host application, so skipping a call whose result is discarded changes nothing either. The evaluator then
+   * skips the branch of `IF` that is not selected (docs/standards/core/functions/IF.md). `false` by default, e.g. for a
+   * function of the host application that records diagnostics.
+   */
+  readonly sideEffectFree?: boolean;
+}
+
 /**
  * Named function (docs/core/functions.md). A call is resolved to the first overload that matches the arguments
  * (docs/semantics/evaluation.md). If none matches, the call returns the leftmost Error argument, the first Error
@@ -48,13 +59,17 @@ function firstError(values: readonly IValue[]): IValue | undefined {
 export class FlFunction implements IFunction {
   readonly primitiveType = PrimitiveType.Function;
   readonly overloads: readonly IFunctionOverload[];
+  /** See {@link FunctionOptions.sideEffectFree}. */
+  readonly sideEffectFree: boolean;
 
   constructor(
     readonly name: string,
     overloads: readonly IFunctionOverload[],
     readonly functionType: FunctionType = FunctionType.Function,
+    options: FunctionOptions = {},
   ) {
     this.overloads = Object.freeze([...overloads]);
+    this.sideEffectFree = functionType !== FunctionType.Procedure && options.sideEffectFree === true;
   }
 
   get type(): IType {
