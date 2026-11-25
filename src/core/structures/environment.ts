@@ -62,6 +62,8 @@ export class Environment extends FlObject implements IEnvironment {
     environment.initVariable(SerializationVariables.includeObjectClass, Value.boolean(false, "false"));
     environment.initVariable(SerializationVariables.maxArrayPreview, Value.number(-1, "-1"));
 
+    // core-1.1 is backward compatible: STANDARDS lists core-1.0 too, so REQUIRE "core-1.0" keeps working
+    for (const compatible of CoreStandard.compatibleIdentifiers) environment.registerStandard(compatible);
     environment.registerStandard(CoreStandard.instance);
     return environment;
   }

@@ -4,11 +4,11 @@ Status of the implementation against the FormuLang standard.
 
 | | |
 | :-- | :-- |
-| **Target standards** | Core `core-1.0`, Stock `stock-1.0` |
+| **Target standards** | Core `core-1.1`, Stock `stock-1.1` (backward compatible with `core-1.0` and `stock-1.0`) |
 | **Standard revision checked** | [`Adisoreq/FormuLang@c40e08a`](https://github.com/Adisoreq/FormuLang/tree/c40e08a) (2026-11-23) |
 | **Reference implementation** | FormuLang.NET 1.0.0, [`Adisoreq/formulang-dotnet@7e85d55`](https://github.com/Adisoreq/formulang-dotnet/tree/7e85d55) |
 | **Last review** | 2026-11-23 |
-| **Conformance tests** | [tests/conformance/spec](../tests/conformance/spec) (the JSON test cases of the standard: 138 of 139 pass, see [D3](#known-deviations)) and the tests ported from FormuLang.NET in [tests/conformance](../tests/conformance) |
+| **Conformance tests** | [tests/conformance/spec](../tests/conformance/spec) (the JSON test cases of the standard: all 203 pass; the cases of `core-1.0` and `stock-1.0` run too) and the tests ported from FormuLang.NET in [tests/conformance](../tests/conformance) |
 
 Update the revisions and this document every time the library is synced with a newer revision of the standard (see [Development](development.md)).
 
@@ -34,7 +34,7 @@ Legend: ✅ conforms · 🟡 partial / deviates · ❌ not implemented
 | [Errors](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/errors/README.md) | ✅ | All 13 errors with the standard codes and names. |
 | [Types](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/README.md) | ✅ | |
 | [Serialization](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/serialization.md) | ✅ | `SerializationOptions`: `decimal_place`, `split_array`, `split_object`, `include_object_class`, `max_array_preview`, read from the environment variables of the execution (`TEXT`, `JOIN`, `ExecutionResult.toString()`). |
-| [Environment](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md#environment-structure) | ✅ | `core-1.0`, constants `STANDARDS`, `E`, `PI`, `PHI`, `NOW`, `NULL`, `TRUE`, `FALSE`, variables `array_indexing`, `suppress_errors`, `time_offset` and the serialization variables. |
+| [Environment](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md#environment-structure) | ✅ | `STANDARDS` is `["core-1.0", "core-1.1"]`, constants `STANDARDS`, `E`, `PI`, `PHI`, `NOW`, `NULL`, `TRUE`, `FALSE`, variables `array_indexing`, `suppress_errors`, `time_offset` and the serialization variables. |
 | [Context types](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/context.md#context-types) | ✅ | `Context` (Default Context), `IterationContext` (`I`, `N`, `PREV`; run with `Executor.executeIterations`) and `TimeContext` (`TIME_S`, `TIME_MS`, `DTIME_S`, `DTIME_MS`, `FRAME`, `PREV`; run with `Executor.createFrameRunner` or `executeFrames`). `I` and `FRAME` are computed when they are read (`ComputedConstant`). `NOW` is the same in all iterations and is set again for every frame. |
 | [Text](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/Text.md#characters) | ✅ | A character is one Unicode code point (`LEN`, `SUBSTR`, `FIND`, `REVERSE`, `SPLIT(text, "")`); `SORT` compares code points; `UPPERCASE` / `LOWERCASE` are invariant (I21). Texts are not normalized. |
 | [Comments](https://github.com/Adisoreq/FormuLang/blob/main/docs/syntax/operators.md#1-formula-and-line-structure) | ✅ | Line comments `#` and scoped comments `<# ... #>`. |
@@ -70,7 +70,7 @@ Remove an item when it is fixed and covered by a test.
 | :-: | :-------- | :------- |
 | D2 | The primitive map holds the classified expressions; the values computed during evaluation are kept per node of the current queue instead of being written into the map. The order of evaluation and the results are the same. | [evaluation.md § Result propagation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md#4-result-propagation) |
 
-| D3 | Conformance case `core.syntax.unicode.011` expects one error for `$zółw = 1`, but step 3.3 of the validation algorithm appends a `SYNTAX_ERROR` for every invalid symbol, so the library reports two (`ó` at column 3 and `ł` at column 4), like FormuLang.NET. The library follows the algorithm; the case is listed in the known deviations of [spec.test.ts](../tests/conformance/spec.test.ts) until the standard is clarified. | [validation.md § Validation algorithm](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/validation.md), [tests/core/syntax/text_unicode.json](https://github.com/Adisoreq/FormuLang/blob/main/tests/core/syntax/text_unicode.json) |
+| D3 | Resolved: conformance case `core.syntax.unicode.011` expected one error for `$zółw = 1`, but step 3.3 of the validation algorithm reports every invalid symbol. The standard fixed the case (it expects both errors), so it is no longer a known deviation. | [tests/core/syntax/text_unicode.json](https://github.com/Adisoreq/FormuLang/blob/main/tests/core/syntax/text_unicode.json) |
 
 (The numbering follows FormuLang.NET; D1 was fixed there before this library was created.)
 
@@ -89,7 +89,7 @@ Places where the standard leaves room for interpretation, and what the library d
 | I7 | Clean-up of an empty or white-space-only formula. | `OPERATION_ERROR`. |
 | I8 | `{ k: v }` is translated to `OBJECT("k",v)` ([Core parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/parsing.md#operator-translation)), but `OBJECT` is not in the Core functions index. | `OBJECT(...entries? <Any>)` is a Core function taking key-value pairs. |
 | I9 | An identifier without a sigil that names a function (`MAP($a, ABS)`, `TEXT(AVG)`). | It is a Delegate of that function. Constants are checked first. |
-| I10 | The README of the standard calls a lambda stored in a variable as `$square(5)`, but Core parsing gives `(` an infix role only after an identifier. | Not supported (syntax error), following Core parsing. A lambda is invoked by the function it is passed to. |
+| I10 | The README of the standard calls a lambda stored in a variable as `$square(5)`. | Supported since `core-1.1`: a delegate call is translated into `CALL` (resolves P2). The invocation depth is limited to 256 (`MAX_INVOCATION_DEPTH`); a stack overflow before the limit also gives an `OPERATION_ERROR`. |
 | I11 | `NUMBER(text)`: the standard does not say whether a sign is allowed (`NUMBER("-5")`). | A leading `+` or `-` is accepted, and white space around the number. |
 | I12 | Lambda body scope: the standard does not say whether a body can read context variables. | It can (`MAP($arr, (e) => e - AVG($arr))` from the [common formulas](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/examples/common_formulas.md) needs it), and it can read the parameters of enclosing lambdas. |
 | I13 | Choice of the context type. | The host application chooses and creates the context ([pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md), step 1); a formula cannot select it. A context type is a class derived from `Context` that loads its constants in `loadContextData()`. `ContextType` is the context *kind*: disposable or persistent. |
@@ -112,7 +112,7 @@ Changes that would fit better than the current standard. They are **not implemen
 | # | Proposal | Reason |
 | :-: | :------- | :----- |
 | P1 | Short-circuit evaluation of `IF`, `&&` and `\|\|` (and `AND`, `OR`). | Today every argument is computed: an Error in the branch that is not selected is discarded, but its side effects (assignments, expensive `INDICATOR` calls) happen, which surprises users (`IF(true, $a = 1, $b = 2)` sets both). |
-| P2 | A direct call of a Delegate: `$square(5)`, `((x) => x * 2)(3)` (I10). | The README of the standard already uses it; postfix `(` is listed in the binding power table (priority 10). |
+| P2 | A direct call of a Delegate: `$square(5)`, `((x) => x * 2)(3)` (I10). | Done in `core-1.1` (`CALL`, delegate call syntax). |
 | P3 | `OBJECT(...entries)` in the Core functions index (I8). | The object literal is translated into it, so every implementation has to define it anyway. |
 | P4 | Chained assignment (I17): `SET`, `INIT` and `COND_SET` return the assigned value, or `SUCCESS` does not stop the next procedure. | `$a = $b = 1` parses, but does not do what it says. |
 | P5 | Number literals `1_000.5`, `.5e3` and `1.e5`. | They match none of the patterns of [literals.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/syntax/literals.md), so they are syntax errors, probably unintentionally. |
@@ -128,7 +128,7 @@ Found while writing the conformance tests (most of them also by FormuLang.NET). 
 | [array_examples.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/examples/array_examples.md), [text_examples.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/examples/text_examples.md) | Results are written as `[ [ 1, 2, 3 ], [ a, b, c ] ]`; [serialization](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/serialization.md) gives `[[1, 2, 3], ["a", "b", "c"]]`. |
 | [context_examples.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/examples/context_examples.md), example 6 | The result is written as `TYPE_ERROR: ...` instead of `[TYPE_ERROR (4)] ...`. |
 | [environment_examples.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/examples/environment_examples.md), example 4 | `REQUIRE "math-1.x"` fails in a Core environment, so the shown result `12.5663706144` is never reached. |
-| [README.md](https://github.com/Adisoreq/FormuLang/blob/main/README.md) of the standard | `$squared = $square(5)` (see I10). |
+| [README.md](https://github.com/Adisoreq/FormuLang/blob/main/README.md) of the standard | `$squared = $square(5)` (see I10; valid since `core-1.1`). |
 | [ARGUMENT_ERROR.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/errors/ARGUMENT_ERROR.md) | `MAP([1, 2], (a, b) => a)` is shown as an error, but `MAP.md` allows a lambda with an index parameter (see I19). |
 | [Error.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/Error.md), [values.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/values.md) | Error is described as passed by value in one document and by reference in the other. The library treats it as a complex type (by reference). |
 | [syntax](https://github.com/Adisoreq/FormuLang/tree/main/docs/syntax) | Examples use `LERP`, `RAND` and `STDEV_P`, which are not defined by any standard. |

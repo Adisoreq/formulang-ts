@@ -252,6 +252,12 @@ function readConstant(name: string, context: IContext): IValue {
   return Value.error(Errors.unknownSymbolError(`Constant "${name}" is not defined.`), name);
 }
 
+/** Maximum number of lambda invocations running one inside another (docs/semantics/evaluation.md). */
+export const MAX_INVOCATION_DEPTH = 256;
+
+// Lambda invocations running one inside another; JavaScript runs one execution at a time on a thread
+let invocationDepth = 0;
+
 /**
  * Delegate created by a lambda expression. It captures the scope it was created in, so its body can read
  * context variables and the parameters of enclosing lambdas (conformance I12).
@@ -309,8 +315,32 @@ export class Lambda implements ILambda {
         this.name,
       );
     }
+    // docs/semantics/evaluation.md, "Invocation depth": a deeper invocation is an OPERATION_ERROR, never a stack overflow
+    if (invocationDepth >= MAX_INVOCATION_DEPTH) {
+      return Value.error(
+        Errors.operationError(
+          `Lambda invocations are nested more than ${MAX_INVOCATION_DEPTH} deep (a recursion that does not stop?).`,
+        ),
+        this.name,
+      );
+    }
     const bindings = new Map(this.parameters.map((name, i) => [name, parameters[i]!] as const));
-    return this.evaluator.evaluateSequence(this.node.body, new Scope(this.scope.context, bindings, this.scope), false);
+    invocationDepth++;
+    try {
+      return this.evaluator.evaluateSequence(
+        this.node.body,
+        new Scope(this.scope.context, bindings, this.scope),
+        false,
+      );
+    } catch (error) {
+      // A small stack (e.g. a worker) could overflow before the limit: an Error is still better than an exception
+      if (error instanceof RangeError) {
+        return Value.error(Errors.operationError("Lambda invocations are nested too deep for the stack."), this.name);
+      }
+      throw error;
+    } finally {
+      invocationDepth--;
+    }
   }
 
   toString(): string {

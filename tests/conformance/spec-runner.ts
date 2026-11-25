@@ -47,7 +47,13 @@ export interface ConformanceCase {
 }
 
 /** Standards implemented by the library. A case that requires another standard is skipped. */
-export const supportedStandards: ReadonlySet<string> = new Set([CoreStandard.identifier, StockStandard.identifier]);
+// The 1.1 versions are backward compatible, so the cases of the 1.0 versions apply too
+export const supportedStandards: ReadonlySet<string> = new Set([
+  ...CoreStandard.compatibleIdentifiers,
+  CoreStandard.identifier,
+  ...StockStandard.compatibleIdentifiers,
+  StockStandard.identifier,
+]);
 
 export const specDirectory = join(dirname(fileURLToPath(import.meta.url)), "spec");
 

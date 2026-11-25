@@ -13,6 +13,7 @@ import {
   trigonometricFunctions,
   typeFunctions,
 } from "./functions/conversion.js";
+import { core11Functions } from "./functions/core11.js";
 import { controlFunctions, logicFunctions } from "./functions/logic.js";
 import { textFunctions } from "./functions/text.js";
 import { timeFunctions } from "./functions/time.js";
@@ -30,21 +31,24 @@ export const CoreFunctions: readonly FlFunction[] = Object.freeze([
   ...trigonometricFunctions(),
   ...objectFunctions(),
   ...timeFunctions(),
+  ...core11Functions(),
   ...objectLiteralFunctions(),
 ]);
 
 /** Procedures of the Core standard: `SET`, `INIT`, `COND_SET`, `REQUIRE`. */
 export const CoreProcedures: readonly Procedure[] = Object.freeze(coreProcedures());
 
-/** The Core standard, `core-1.0` (docs/standards/core/README.md). */
+/** The Core standard, `core-1.1` (docs/standards/core/README.md). */
 export class CoreStandard implements IStandard {
   /** Identifier of the implemented version. */
-  static readonly identifier = "core-1.0";
+  static readonly identifier = "core-1.1";
+  /** Earlier versions that this version is backward compatible with; they are in `STANDARDS` too. */
+  static readonly compatibleIdentifiers: readonly string[] = Object.freeze(["core-1.0"]);
   static readonly instance = new CoreStandard();
 
   readonly id = "core";
   readonly name = "Core";
-  readonly version: IStandardVersion = new StandardVersion(1, 0);
+  readonly version: IStandardVersion = new StandardVersion(1, 1);
   readonly extendedTypes: readonly string[] = Object.freeze([]);
   readonly extendedTypeTree: IAbstractTree<string> = new AbstractTree<string>(TypeNames.Object, TypeNames.Object);
   readonly namedFunctions: readonly IFunction[] = Object.freeze([...CoreFunctions, ...CoreProcedures]);

@@ -25,7 +25,7 @@ export {
   FormulaRegistry,
   type FormulaParameters,
 } from "./registry.js";
-export { STOCK_IDENTIFIER, STOCK_REQUIRED_CORE, StockFunctionNames } from "./names.js";
+export { STOCK_COMPATIBLE_IDENTIFIERS, STOCK_IDENTIFIER, STOCK_REQUIRED_CORE, StockFunctionNames } from "./names.js";
 export { StockContext, IndicatorContext, PatternContext, StrategyContext, type CandlesArgument } from "./contexts.js";
 export { StockExecutor, type PatternResult, type StrategyResult } from "./executor.js";
 export {
@@ -34,5 +34,7 @@ export {
   createCandleFunction,
   createIsBullishFunction,
   createIsBearishFunction,
+  createLagFunction,
+  createWindowFunction,
 } from "./functions.js";
 export { StockStandard, registerStock, getFormulaRegistry } from "./standard.js";

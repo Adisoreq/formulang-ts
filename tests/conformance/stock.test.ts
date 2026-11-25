@@ -126,7 +126,9 @@ describe("Stock standard", () => {
   it("is registered in the environment", () => {
     const { environment } = createEnvironment();
     expect(environment.supports("stock-1.0")).toBe(true);
-    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe('["core-1.0", "stock-1.0"]');
+    expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe(
+      '["core-1.0", "core-1.1", "stock-1.0", "stock-1.1"]',
+    );
     expect(environment.extendedTypes).toContain("Stock.Candle");
     expect(environment.getFunction("CANDLE")).toBeDefined();
     expect(getFormulaRegistry(environment)).toBeDefined();

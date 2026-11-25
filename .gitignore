@@ -164,3 +164,6 @@ dist
 ### FormuLang-TS ###
 # Generated API reference (npm run docs)
 docs/api/
+
+# Release packages (scripts/pack.mjs)
+artifacts/

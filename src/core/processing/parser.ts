@@ -80,6 +80,7 @@ function infixPower(symbol: string): number {
       return BindingPower.Exponential;
     case ".":
     case "[":
+    case "(":
       return BindingPower.Postfix;
     default:
       return COMPARISONS.has(symbol) ? BindingPower.Comparison : -1;
@@ -247,13 +248,16 @@ class SequenceParser {
       case "false":
         return new LiteralNode(Value.boolean(false, "false"), "false");
     }
-    if (isOperator(this.peek(), "(")) {
+    // A lambda parameter followed by "(" is a delegate call (core-1.1): the parameter is the operand of the postfix
+    // "(", so the parameter wins over a named function with the same name
+    const parameter = this.#lambdaScopes.some((scope) => scope.includes(name));
+    if (!parameter && isOperator(this.peek(), "(")) {
       this.#position++;
       return new CallNode(name, this.parseList(")"));
     }
     const parameterCount = this.procedures.get(name);
     if (parameterCount !== undefined) return this.parseProcedureCall(name, parameterCount);
-    if (this.#lambdaScopes.some((scope) => scope.includes(name))) return new ParameterNode(name);
+    if (parameter) return new ParameterNode(name);
     return new ConstantNode(name);
   }
 
@@ -380,6 +384,8 @@ class SequenceParser {
       this.expect("]");
       return new CallNode("GET", [left, index]);
     }
+    // Delegate call (core-1.1): the value of the operand is called, e.g. $f(2) is CALL($f, 2)
+    if (symbol === "(") return new CallNode("CALL", [left, ...this.parseList(")")]);
     const right = this.parseExpression(rightBindingPower(symbol));
     const next = this.peek();
     if (COMPARISONS.has(symbol) && next?.type === TokenType.Operator && COMPARISONS.has(next.value)) {

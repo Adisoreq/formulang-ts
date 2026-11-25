@@ -216,8 +216,11 @@ describe("Parsing", () => {
   it("parses a parenthesized identifier as a grouped expression", () => expect(roots("(x) + 1")).toEqual(["ADD(x,1)"]));
   it("treats an object key spelled like a keyword as a key", () =>
     expect(roots("{ null: 1 }")).toEqual(['OBJECT("null",1)']));
-  it("rejects a direct call of a delegate (conformance I10)", () =>
-    expect(parse("$square(5)").error.code).toBe(ErrorCode.SyntaxError));
+  // core-1.1: a delegate call is translated into CALL (docs/standards/core/semantics/parsing.md, "Delegate call")
+  it("translates a delegate call into CALL", () => {
+    expect(roots("$square(5)")).toEqual(["CALL($square,5)"]);
+    expect(roots("$o.f(1)(2)")).toEqual(['CALL(CALL(GET($o,"f"),1),2)']);
+  });
 });
 
 // docs/standards/core/semantics/validation.md

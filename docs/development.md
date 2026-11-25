@@ -115,7 +115,13 @@ Releases are published to [npm](https://www.npmjs.com/package/formulang-ts) by t
 
 The workflow checks that the tag matches the version of `package.json`, runs `npm run check`, publishes the package with [provenance](https://docs.npmjs.com/generating-provenance-statements) and creates a GitHub release with the packed archive. It needs the repository secret `NPM_TOKEN` (an npm access token that can publish `formulang-ts`) in the `npm` environment; after the first publication the token can be replaced with [trusted publishing](https://docs.npmjs.com/trusted-publishers).
 
-To check the content of the package before a release: `npm pack --dry-run`.
+To pack the release locally: [scripts/pack.mjs](../scripts/pack.mjs) runs the checks of `npm run check` and `npm pack`, and writes `formulang-ts-<version>.tgz` into `artifacts`. It warns if the version is already tagged or the working tree has uncommitted changes (`--skip-checks` only builds and packs, `--out` sets another directory). The format check ignores line endings, so it also passes in a Windows checkout with CRLF endings.
+
+```bash
+node scripts/pack.mjs
+```
+
+To only list the content of the package: `npm pack --dry-run`.
 
 ## Extensions
 

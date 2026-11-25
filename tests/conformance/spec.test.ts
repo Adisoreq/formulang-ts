@@ -10,11 +10,7 @@ import { loadCases, runCase, specDirectory, supportedStandards } from "./spec-ru
  * Cases that disagree with the algorithm of the standard itself (docs/conformance.md, "Known deviations"), the same
  * as in FormuLang.NET. They must keep failing: when the standard is fixed and the case passes, remove it here.
  */
-const knownDeviations: Readonly<Record<string, string>> = {
-  "core.syntax.unicode.011":
-    'Core validation step 3.3 appends a SYNTAX_ERROR for every invalid symbol, so "$zółw = 1" has two errors ' +
-    '("ó" and "ł"), but the case expects only the first one.',
-};
+const knownDeviations: Readonly<Record<string, string>> = {};
 
 const cases = loadCases();
 

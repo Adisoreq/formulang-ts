@@ -51,7 +51,8 @@ export const require = [
   ["REQUIRE \"core-1+\"", "[SUCCESS (0)] Operation completed successfully."],
   ["REQUIRE([\"core-1.x\", \"core-1.0\"])", "[SUCCESS (0)] Operation completed successfully."],
   ["REQUIRE \"stock-5.2+\"", "[NOT_SUPPORTED_ERROR (11)] Standard \"stock-5.2+\" is not supported."],
-  ["REQUIRE \"core-1.1+\"", "[NOT_SUPPORTED_ERROR (11)] Standard \"core-1.1+\" is not supported."],
+  ["REQUIRE \"core-1.0\"", "[SUCCESS (0)] Operation completed successfully."],
+  ["REQUIRE \"core-1.2+\"", "[NOT_SUPPORTED_ERROR (11)] Standard \"core-1.2+\" is not supported."],
   ["REQUIRE \"core\"", "[OPERATION_ERROR (3)] \"core\" is not a valid standard requirement."],
   ["REQUIRE([1])", "[ARGUMENT_ERROR (6)] No overload of \"REQUIRE\" matches the arguments (Array)."],
 ] as const;
@@ -83,7 +84,7 @@ export const contextExamples = [
 
 /** `EnvironmentExamples(string formula, string expected)` */
 export const environmentExamples = [
-  ["$standards = JOIN(STANDARDS, \", \")\nCONCAT(\"Supported standards: \", $standards)", "Supported standards: core-1.0"],
+  ["$standards = JOIN(STANDARDS, \", \")\nCONCAT(\"Supported standards: \", $standards)", "Supported standards: core-1.0, core-1.1"],
   ["REQUIRE \"core-1.0\"\nREQUIRE \"stock-5.2+\"\n$diff = CLOSE[I] - OPEN[I]", "[NOT_SUPPORTED_ERROR (11)] Standard \"stock-5.2+\" is not supported."],
   ["$radius = 2\nMUL(PI, POW($radius, 2))", "12.566370614359172"],
   ["@array_indexing = 1\n$elements = ARRAY(10, 20, 30, 40)\n$elements[1]", "10"],

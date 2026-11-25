@@ -29,9 +29,9 @@ The package has three entry points, each available as an ES module and as Common
 
 | Import | Content |
 | :----- | :------ |
-| `formulang-ts` | Core standard (`core-1.0`), the execution pipeline and the JavaScript facade |
+| `formulang-ts` | Core standard (`core-1.1`), the execution pipeline and the JavaScript facade |
 | `formulang-ts/abstractions` | Interfaces only (`IValue`, `IContext`, `IEvaluator`, ...), for hosts and extensions that depend only on the contracts |
-| `formulang-ts/stock` | Stock extension standard (`stock-1.0`) |
+| `formulang-ts/stock` | Stock extension standard (`stock-1.1`) |
 
 ## Quick start: the JavaScript facade
 
@@ -105,7 +105,7 @@ The facade is built on an API that follows the architecture of the reference imp
 ```ts
 import { Environment, Executor } from "formulang-ts";
 
-const environment = Environment.create();   // supports core-1.0
+const environment = Environment.create();   // supports core-1.1 (and core-1.0)
 const executor = Executor.create();
 
 const result = executor.execute("$r := 2.5\nPI * $r ^ 2", environment);
@@ -224,7 +224,7 @@ import { Environment, Executor } from "formulang-ts";
 import { registerStock, StockContext, StockExecutor, StrategyContext } from "formulang-ts/stock";
 
 const environment = Environment.create();
-const registry = registerStock(environment).registry;   // Stock.Candle, CANDLE, LOAD_INDICATOR, LOAD_PATTERN, stock-1.0
+const registry = registerStock(environment).registry;   // Stock.Candle, CANDLE, LOAD_INDICATOR, LOAD_PATTERN, LAG, WINDOW, stock-1.1
 registry.indicators.add("SMA", "$p = PARAMETERS.period\n$w = RANGE(SOURCE, MAX(I - $p + 1, 0), I)\nIF(LEN($w) == $p, AVG($w), null)", { period: 3 });
 
 const candles = [1, 2, 3, 4, 5].map((p) => ({ open: p, high: p, low: p, close: p }));

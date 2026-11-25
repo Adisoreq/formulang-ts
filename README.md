@@ -6,7 +6,7 @@
 
 ![GitHub License](https://img.shields.io/github/license/Adisoreq/formulang-ts)
 [![npm](https://img.shields.io/npm/v/formulang-ts?label=npm)](https://www.npmjs.com/package/formulang-ts)
-[![Standards](https://img.shields.io/badge/standards-core--1.0%20%C2%B7%20stock--1.0-2fbf71)](docs/conformance.md)
+[![Standards](https://img.shields.io/badge/standards-core--1.1%20%C2%B7%20stock--1.1-2fbf71)](docs/conformance.md)
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Changelog**](CHANGELOG.md)
 
@@ -45,7 +45,7 @@ else console.log(result.error.toString());  // e.g. [UNKNOWN_SYMBOL_ERROR (5)] V
 
 ## Features
 
-- **Core 1.0** and **Stock 1.0** standards: all Core functions and procedures, lambdas, objects, scoped comments, Unicode texts, `FORMAT`, the time functions and `NOW`, the Iteration and Time Contexts; the Stock context types, the formula registry of indicators and patterns, `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR` and `LOAD_PATTERN`.
+- **Core 1.1** and **Stock 1.1** standards (backward compatible with 1.0): all Core functions and procedures, lambdas and delegate calls (`$f(x)`), objects, scoped comments, Unicode texts, `FORMAT`, the time and statistical functions and `NOW`, the Iteration and Time Contexts; the Stock context types, the formula registry of indicators and patterns, `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR`, `LOAD_PATTERN`, `LAG` and `WINDOW`.
 - **Modular**: one package with separate entry points – `formulang-ts`, `formulang-ts/abstractions` and `formulang-ts/stock` – each as an ES module and as CommonJS, with type declarations and no runtime dependencies.
 - **Two levels of API**: a facade working with plain JavaScript values (`evaluate`, `createEngine`), and the pipeline API following the architecture of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet) (environments, contexts, replaceable stages, typed function overloads).
 - **Errors are values**: a formula never throws; every problem is a FormuLang Error with a code from the standard, and validation reports every problem at once.
@@ -53,21 +53,63 @@ else console.log(result.error.toString());  // e.g. [UNKNOWN_SYMBOL_ERROR (5)] V
 
 ## Installation
 
-```bash
-npm install formulang-ts
-```
-
-The package needs Node.js 20 or newer, or any modern browser (through a bundler). See [Getting started](docs/getting-started.md#installation).
+The library is one package on [npm](https://www.npmjs.com/package/formulang-ts), with three entry points and no runtime dependencies:
 
 | Import | Content |
 | :----- | :------ |
 | `formulang-ts` | Core standard, execution pipeline, JavaScript facade |
+| `formulang-ts/stock` | Stock extension standard: candles, indicators, patterns, strategies |
 | `formulang-ts/abstractions` | Interfaces shared by every module |
-| `formulang-ts/stock` | Stock extension standard |
+
+### 1. Check the requirements
+
+Node.js 20 or newer, or any modern browser through a bundler (Vite, webpack, esbuild, ...). Check the installed version of Node.js:
+
+```bash
+node --version
+```
+
+### 2. Add the package
+
+In the directory of the project (the one with `package.json`):
+
+```bash
+npm install formulang-ts
+```
+
+With other package managers: `yarn add formulang-ts`, `pnpm add formulang-ts` or `bun add formulang-ts`. The package contains type declarations, so TypeScript needs no extra `@types` package.
+
+### 3. Run your first formula
+
+The package works as an ES module and as CommonJS:
+
+```ts
+import { evaluate } from "formulang-ts";          // ES module (TypeScript, bundlers, "type": "module")
+// const { evaluate } = require("formulang-ts");  // CommonJS
+
+const result = evaluate("$double = (x) => x * 2
+$double(21)");
+console.log(result.ok ? result.value : result.error.toString());   // 42
+```
+
+### 4. Add the Stock standard (optional)
+
+The Stock standard is a separate entry point of the same package, so there is nothing more to install:
+
+```ts
+import { Environment } from "formulang-ts";
+import { registerStock } from "formulang-ts/stock";
+
+const environment = Environment.create();
+const registry = registerStock(environment).registry;   // LOAD_INDICATOR, LAG, WINDOW, Stock.Candle, stock-1.1
+registry.indicators.add("SMA", "WINDOW(SOURCE, PARAMETERS.period, AVG)", { period: 20 });
+```
+
+The next steps (contexts, iterations over candles, your own functions) are in [Getting started](docs/getting-started.md).
 
 ## Project status
 
-The library implements the first stable versions of the standards, **Core 1.0** and **Stock 1.0**. From version `1.0.0` on it follows [Semantic Versioning](https://semver.org): changes within the `1.x` versions are backward compatible. See [Conformance](docs/conformance.md) for the details, the implementation choices and the proposals for the standard, and [Development](docs/development.md#releasing) for the releases.
+The library implements the standards **Core 1.1** and **Stock 1.1**, backward compatible with their first stable versions, **Core 1.0** and **Stock 1.0**. From version `1.0.0` on it follows [Semantic Versioning](https://semver.org): changes within the `1.x` versions are backward compatible. See [Conformance](docs/conformance.md) for the details, the implementation choices and the proposals for the standard, and [Development](docs/development.md#releasing) for the releases.
 
 
 ## Related projects

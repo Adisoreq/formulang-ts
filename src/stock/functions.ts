@@ -1,3 +1,4 @@
+import type { IFunction, ILambda } from "../abstractions/functions.js";
 import type { IObject, IValue } from "../abstractions/primitives.js";
 import { FunctionType } from "../abstractions/primitives.js";
 import type { IContext } from "../abstractions/structures.js";
@@ -221,4 +222,81 @@ function computePattern(
   const result = new StockExecutor(series.executor).executePatternSeries(definition.formula, child);
   series.store(key, result);
   return result;
+}
+
+// stock-1.1
+
+/** Position of the current candle (independent of `@array_indexing`), or an Error. */
+function currentPosition(name: string, series: readonly IValue[], context: IContext): number | IValue {
+  if (!(context instanceof StockContext)) return operationError(`"${name}" can be called only in a Stock Context.`);
+  if (series.length !== context.count) {
+    return operationError(`The series has ${series.length} elements, but there are ${context.count} candles.`);
+  }
+  return context.iteration;
+}
+
+function computeLag(series: readonly IValue[], offset: number, context: IContext): IValue {
+  const position = currentPosition(StockFunctionNames.lag, series, context);
+  if (typeof position !== "number") return position;
+  if (!Number.isInteger(offset) || offset < 0) {
+    return operationError("The offset must be a whole number of 0 or more (a future value cannot be read).");
+  }
+  return position - offset < 0 ? Value.null() : series[position - offset]!;
+}
+
+function computeWindow(
+  series: readonly IValue[],
+  length: number,
+  handler: IFunction | undefined,
+  context: IContext,
+): IValue {
+  const position = currentPosition(StockFunctionNames.window, series, context);
+  if (typeof position !== "number") return position;
+  if (!Number.isInteger(length) || length < 1) {
+    return operationError("The length of a window must be a whole number of 1 or more.");
+  }
+  if (position + 1 < length) return Value.null();
+  const window = Value.array(series.slice(position - length + 1, position + 1));
+  if (handler === undefined) return window;
+  if (handler.functionType === FunctionType.Lambda && (handler as ILambda).parameters.length !== 1) {
+    return Value.error(
+      Errors.argumentError(`The lambda passed to "${StockFunctionNames.window}" must have exactly 1 parameter.`),
+    );
+  }
+  return handler.invoke([window], context);
+}
+
+/** `LAG(series, offset?)`: docs/standards/stock/functions/LAG.md */
+export function createLagFunction(): FlFunction {
+  const series = ArgumentTemplate.of("series", Types.Array);
+  return new FlFunction(
+    StockFunctionNames.lag,
+    [
+      new FunctionOverload([series], (a, c) => computeLag(a[0]!.raw as readonly IValue[], 1, c)),
+      new FunctionOverload([series, ArgumentTemplate.of("offset", Types.Number)], (a, c) =>
+        computeLag(a[0]!.raw as readonly IValue[], a[1]!.raw as number, c),
+      ),
+    ],
+    FunctionType.Function,
+    { sideEffectFree: true },
+  );
+}
+
+/** `WINDOW(series, length, handler?)`: docs/standards/stock/functions/WINDOW.md */
+export function createWindowFunction(): FlFunction {
+  const series = ArgumentTemplate.of("series", Types.Array);
+  const length = ArgumentTemplate.of("length", Types.Number);
+  return new FlFunction(
+    StockFunctionNames.window,
+    [
+      new FunctionOverload([series, length], (a, c) =>
+        computeWindow(a[0]!.raw as readonly IValue[], a[1]!.raw as number, undefined, c),
+      ),
+      new FunctionOverload([series, length, ArgumentTemplate.of("handler", Types.Delegate)], (a, c) =>
+        computeWindow(a[0]!.raw as readonly IValue[], a[1]!.raw as number, a[2]!.raw as IFunction, c),
+      ),
+    ],
+    FunctionType.Function,
+    { sideEffectFree: true },
+  );
 }

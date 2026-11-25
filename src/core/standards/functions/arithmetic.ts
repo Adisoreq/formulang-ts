@@ -4,7 +4,9 @@
  * @module
  */
 import type { IValue } from "../../../abstractions/primitives.js";
+import { ArgumentTemplate } from "../../functions/argument-template.js";
 import type { FlFunction } from "../../functions/function.js";
+import { Types } from "../../primitives/types.js";
 import { roundDecimal, roundDouble, roundHalfToEven, type RoundingMode } from "../../utils/number-format.js";
 import { N, fn, isWhole, num, numberArg, operationError, overload, textArg, txt, T } from "../helpers.js";
 
@@ -59,7 +61,12 @@ const binary = (name: string, operation: (a: number, b: number) => IValue): FlFu
 const rounding = (name: string, mode: RoundingMode): FlFunction =>
   fn(
     name,
-    overload((a) => round(num(a[0]), num(a[1]), mode), numberArg("number"), numberArg("precision")),
+    // core-1.1: the precision is optional, 0 by default
+    overload(
+      (a) => round(num(a[0]), a.length > 1 ? num(a[1]) : 0, mode),
+      numberArg("number"),
+      ArgumentTemplate.of("precision", Types.Number, { optional: true }),
+    ),
   );
 
 export const arithmeticFunctions = (): FlFunction[] => [
