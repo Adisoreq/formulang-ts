@@ -1,0 +1,5 @@
+# Core 1.2: the memory of a Time Context keeps a state between the frames.
+$speed = 3 + SIN(TIME_S)                 # units per second
+$distance = RECALL("distance", 0) + $speed * DTIME_S
+STORE("distance", $distance)
+FORMAT("{:.2} units after {:.1} s", [$distance, TIME_S])

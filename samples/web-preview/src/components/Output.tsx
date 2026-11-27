@@ -2,17 +2,45 @@ import { For, Show, createEffect, createSignal, on } from "solid-js";
 import type { IError } from "formulang-ts";
 import type { DefaultRun, Diagnostics, IterationRun } from "../model/engine";
 
-/** Validation errors, or the error that stopped a stage. */
+/**
+ * Validation errors, or the error that stopped a stage; the warnings of the preparation (Core 1.2), which never
+ * change the result; and the metadata block of the formula.
+ */
 export function Problems(props: { readonly diagnostics: Diagnostics; readonly error?: IError | undefined }) {
   return (
-    <Show when={props.diagnostics.validationErrors.length > 0 || props.error !== undefined}>
-      <div class="problems" role="alert">
-        <For each={props.diagnostics.validationErrors}>{(error) => <p>{error.toString()}</p>}</For>
-        <Show when={props.diagnostics.validationErrors.length === 0 && props.error}>
-          {(error) => <p>{error().toString()}</p>}
-        </Show>
-      </div>
-    </Show>
+    <>
+      <Show when={props.diagnostics.validationErrors.length > 0 || props.error !== undefined}>
+        <div class="problems" role="alert">
+          <For each={props.diagnostics.validationErrors}>{(error) => <p>{error.toString()}</p>}</For>
+          <Show when={props.diagnostics.validationErrors.length === 0 && props.error}>
+            {(error) => <p>{error().toString()}</p>}
+          </Show>
+        </div>
+      </Show>
+      <Show when={props.diagnostics.warnings.length > 0}>
+        <div class="warnings">
+          <For each={props.diagnostics.warnings}>
+            {(warning) => (
+              <p>
+                <span class="warning-code">{warning.code}</span>{" "}
+                <span class="muted">
+                  {warning.line}:{warning.column}
+                </span>{" "}
+                {warning.message}
+              </p>
+            )}
+          </For>
+        </div>
+      </Show>
+      <Show when={props.diagnostics.metadata}>
+        {(metadata) => (
+          <details class="panel">
+            <summary>Metadata of the formula</summary>
+            <pre class="metadata">{metadata()}</pre>
+          </details>
+        )}
+      </Show>
+    </>
   );
 }
 

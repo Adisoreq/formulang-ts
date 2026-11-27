@@ -3,6 +3,7 @@
  * definitions of the registry (indicators and patterns).
  */
 import { IdentifierValidator } from "formulang-ts";
+import { isFormulaId } from "formulang-ts/stock";
 import type { FillMode, IndicatorConfig, IndicatorParameterConfig, IndicatorType, SeriesMode } from "./types";
 
 /** A parameter of a definition of the registry (an indicator or a pattern). */
@@ -123,7 +124,9 @@ export function registryProblems(
     if (!IdentifierValidator.validate(value))
       problems.push(`${what} "${value}" is not a valid identifier (^[a-zA-Z_]\\w*$).`);
   };
-  identifier(registryId, "Registry id");
+  // A registry id is always a Text (LOAD_INDICATOR("macd-ema200")), so it may contain "-" (Stock 1.2)
+  if (!isFormulaId(registryId))
+    problems.push(`Registry id "${registryId}" is not valid (letters, digits, "_" and "-", ^[a-zA-Z_][\w-]*$).`);
   if (otherIds.includes(registryId)) problems.push(`Registry id "${registryId}" is used by another ${kind}.`);
   for (const p of parameters) {
     identifier(p.id, "Parameter id");

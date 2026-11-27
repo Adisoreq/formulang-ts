@@ -5,12 +5,16 @@ import type {
   IExecutionResult,
   IExpressionNode,
   IParsingResult,
+  IPreparedFormula,
   ISequence,
   IToken,
   ITokenizationResult,
   IValidationResult,
+  IWarning,
 } from "../../abstractions/processing.js";
-import type { IContext } from "../../abstractions/structures.js";
+import type { IContext, IEnvironment } from "../../abstractions/structures.js";
+
+const NO_WARNINGS: readonly IWarning[] = Object.freeze([]);
 import { Errors } from "../errors.js";
 import { TypeNames } from "../primitives/types.js";
 import { SerializationOptions, serialize } from "../serialization/serializer.js";
@@ -67,17 +71,33 @@ export function buildPrimitiveMap(sequences: readonly ISequence[]): ReadonlyMap<
   return map;
 }
 
+/** @internal Tokens around the beginning of a sequence, for the warnings of the preparation. */
+export interface SequenceStart {
+  /** The first token of the sequence. */
+  readonly first: IToken;
+  /** The separator before the sequence (`\n` or `;`); `undefined` for the first sequence. */
+  readonly separator: IToken | undefined;
+  /** The last token of the previous sequence. */
+  readonly previousLast: IToken | undefined;
+  /** Line of the first token. */
+  readonly line: number;
+}
+
 export class ParsingResult extends OperationResult implements IParsingResult {
   readonly sequences: readonly ISequence[];
   readonly primitiveMap: ReadonlyMap<string, IExpressionNode>;
+  /** @internal The beginnings of the sequences, in their order; `undefined` if the parser does not record them. */
+  readonly starts: readonly SequenceStart[] | undefined;
 
   constructor(
     sequences: readonly ISequence[],
     readonly error: IError = Errors.success(),
+    starts?: readonly SequenceStart[],
   ) {
     super();
     this.sequences = Object.freeze([...sequences]);
     this.primitiveMap = buildPrimitiveMap(this.sequences);
+    this.starts = starts;
   }
 
   static failed(error: IError): ParsingResult {
@@ -94,19 +114,67 @@ export class EvaluationResult extends OperationResult implements IEvaluationResu
   }
 }
 
+/**
+ * A prepared formula (docs/semantics/execution.md, "Execution modes"): the parsed sequences, the metadata and the
+ * warnings of the preparation. A hot execution evaluates it without preparing the formula again
+ * (`Executor.evaluate`, `Executor.executeIterations`), as long as the functions of the environment do not change.
+ */
+export class PreparedFormula implements IPreparedFormula {
+  readonly warnings: readonly IWarning[];
+
+  /** @internal */
+  constructor(
+    readonly formula: string,
+    readonly parsing: IParsingResult,
+    readonly metadata: IValue,
+    warnings: readonly IWarning[],
+    /** @internal Environment the formula was prepared for. */
+    readonly environment: IEnvironment,
+    /** @internal Number of the functions of the environment when the formula was prepared. */
+    readonly functionCount: number,
+  ) {
+    this.warnings = Object.freeze([...warnings]);
+  }
+
+  get sequences(): readonly ISequence[] {
+    return this.parsing.sequences;
+  }
+
+  get primitiveMap(): ReadonlyMap<string, IExpressionNode> {
+    return this.parsing.primitiveMap;
+  }
+
+  get error(): IError {
+    return this.parsing.error;
+  }
+
+  get successful(): boolean {
+    return this.parsing.successful;
+  }
+
+  /** Whether the formula can be evaluated in an environment without being prepared again. */
+  isPreparedFor(environment: IEnvironment): boolean {
+    return environment === this.environment && environment.functions.length === this.functionCount;
+  }
+}
+
 /** Result of an execution (finalization, docs/semantics/finalization.md). */
 export class ExecutionResult extends OperationResult implements IExecutionResult {
   /** The Error that aborted the execution, or `SUCCESS`. */
   readonly error: IError;
   readonly validationErrors: readonly IError[];
+  /** Warnings of the preparation of the formula (since `core-1.2`); they never change the result. */
+  readonly warnings: readonly IWarning[];
 
   constructor(
     readonly value: IValue,
     validationErrors: readonly IError[],
     readonly context: IContext,
+    warnings: readonly IWarning[] = NO_WARNINGS,
   ) {
     super();
     this.validationErrors = Object.freeze([...validationErrors]);
+    this.warnings = warnings.length === 0 ? NO_WARNINGS : Object.freeze([...warnings]);
     const raw = value.raw as IError | undefined;
     this.error = value.type.base === TypeNames.Error && raw !== undefined && raw.isFailed() ? raw : Errors.success();
   }

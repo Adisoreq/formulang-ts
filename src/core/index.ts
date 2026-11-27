@@ -37,7 +37,7 @@ export {
   Sequence,
 } from "./processing/nodes.js";
 export { Evaluator, Lambda } from "./processing/evaluator.js";
-export { Executor } from "./processing/executor.js";
+export { Executor, type FormulaSource } from "./processing/executor.js";
 export { FrameRunner } from "./processing/frame-runner.js";
 export {
   ValidationResult,
@@ -47,11 +47,33 @@ export {
   EvaluationResult,
   ExecutionResult,
   IterationExecutionResult,
+  PreparedFormula,
 } from "./processing/results.js";
+export { MetadataResult, readMetadata } from "./processing/metadata.js";
+export {
+  Warning,
+  MetadataChecks,
+  metadataTypeWarnings,
+  type MetadataChecker,
+  type MetadataReport,
+} from "./processing/warnings.js";
+export { CleanUpPositions, type SourcePosition } from "./processing/cleaner.js";
+
+// Formula models
+export {
+  ParameterSpec,
+  ParameterNormalization,
+  ParameterProblemCode,
+  normalizeParameters,
+  parametersKey,
+  type ParameterProblem,
+  type GivenParameterValues,
+} from "./model/parameters.js";
 
 // Structures
 export { Environment } from "./structures/environment.js";
-export { Context, IterationContext, TimeContext } from "./structures/context.js";
+export { Context, IterationContext, TimeContext, type IterationState } from "./structures/context.js";
+export { ContextMemory } from "./structures/memory.js";
 export { Standard, StandardVersion, standardIdentifier, type StandardDefinition } from "./structures/standard.js";
 export { AbstractTree, AbstractTreeNode } from "./structures/abstract-tree.js";
 export {

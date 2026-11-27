@@ -14,13 +14,15 @@ import {
   serialize,
 } from "../core/index.js";
 import { CANDLE_TYPE, candleFromObject, candleToValue } from "./candle.js";
-import { IndicatorContext, PatternContext, StockContext } from "./contexts.js";
+import { IndicatorContext, PatternContext, StockContext, StockSeries } from "./contexts.js";
 import { StockExecutor } from "./executor.js";
 import { StockFunctionNames } from "./names.js";
 import type { FormulaCollection, FormulaDefinition, FormulaRegistry } from "./registry.js";
 
 const operationError = (message: string): IValue => Value.error(Errors.operationError(message));
 const invalidKeyError = (message: string): IValue => Value.error(Errors.invalidKeyError(message));
+const argumentError = (message: string): IValue => Value.error(Errors.argumentError(message));
+const isError = (value: IValue): boolean => value.type.base === TypeNames.Error;
 
 /** `CANDLE(object)`: docs/standards/stock/functions/CANDLE.md */
 export function createCandleFunction(): FlFunction {
@@ -67,25 +69,26 @@ export function createIsBearishFunction(): FlFunction {
 
 /** A definition with its completed parameters, ready to be executed by a child context. */
 interface PreparedLoad {
-  readonly caller: StockContext;
   readonly definition: FormulaDefinition;
   readonly parameters: IValue;
 }
+
+const isPrepared = (value: PreparedLoad | IValue): value is PreparedLoad => "definition" in value;
+
+/** The calling Stock Context, or the `OPERATION_ERROR` of a call outside of one. */
+function stockContext(functionName: string, context: IContext): StockContext | IValue {
+  return context instanceof StockContext
+    ? context
+    : operationError(`"${functionName}" can be called only in a Stock Context.`);
+}
+
+const isStockContext = (value: StockContext | IValue): value is StockContext => value instanceof StockContext;
 
 /**
  * Steps shared by `LOAD_INDICATOR` and `LOAD_PATTERN`: finds the definition and completes the parameters with the
  * default values. Returns the Error if the formula cannot be executed.
  */
-function prepareLoad(
-  functionName: string,
-  part: FormulaCollection,
-  id: string,
-  parameters: IObject | undefined,
-  context: IContext,
-): PreparedLoad | IValue {
-  if (!(context instanceof StockContext)) {
-    return operationError(`"${functionName}" can be called only in a Stock Context.`);
-  }
+function prepareLoad(part: FormulaCollection, id: string, parameters: IObject | undefined): PreparedLoad | IValue {
   // 1. Definition
   const definition = part.get(id);
   if (definition === undefined) return invalidKeyError(`${part.kind} "${id}" is not defined.`);
@@ -100,10 +103,8 @@ function prepareLoad(
     const given = parameters?.getProperty(parameter.name)?.getValue();
     completed.initConstant(parameter.name, given ?? parameter.defaultValue);
   }
-  return { caller: context, definition, parameters: Value.object(completed, undefined, "PARAMETERS") };
+  return { definition, parameters: Value.object(completed, undefined, "PARAMETERS") };
 }
-
-const isPrepared = (value: PreparedLoad | IValue): value is PreparedLoad => "definition" in value;
 
 /** Whether the formula with the key is already being computed by one of the calling formulas. */
 function callsItself(caller: StockContext, key: string): boolean {
@@ -113,26 +114,126 @@ function callsItself(caller: StockContext, key: string): boolean {
   return false;
 }
 
+// Options of LOAD_INDICATOR, LOAD_PATTERN and LOAD_CANDLES (stock-1.2)
+
+type OptionTypes = Readonly<Record<string, string>>;
+
+/** The options by name, or the `ARGUMENT_ERROR` of an unknown option or an option of a wrong type. */
+function readOptions(functionName: string, options: IObject, types: OptionTypes): Map<string, IValue> | IValue {
+  const values = new Map<string, IValue>();
+  for (const key of options.keys) {
+    const type = Object.hasOwn(types, key) ? types[key] : undefined;
+    if (type === undefined) return argumentError(`"${functionName}" has no option "${key}".`);
+    const value = options.getProperty(key)!.getValue();
+    if (value.type.base !== type)
+      return argumentError(`The option "${key}" of "${functionName}" must be of type ${type}.`);
+    values.set(key, value);
+  }
+  return values;
+}
+
+const isOptions = (value: Map<string, IValue> | IValue): value is Map<string, IValue> => value instanceof Map;
+
+/** The series of another timeframe, or the `NOT_SUPPORTED_ERROR` of a timeframe that the host does not provide. */
+function timeframeSeries(caller: StockContext, timeframe: string): StockSeries | IValue {
+  return (
+    caller.series.otherTimeframe(timeframe) ??
+    Value.error(Errors.notSupportedError(`The timeframe "${timeframe}" is not provided by the host application.`))
+  );
+}
+
+const isSeries = (value: StockSeries | IValue): value is StockSeries => value instanceof StockSeries;
+
+/** Key of a computed series in the store of its series: the timeframe, the kind and the identifier. */
+const seriesKey = (series: StockSeries, kind: string, rest: string): string =>
+  `${series.timeframe ?? ""}|${kind}|${rest}`;
+
 /**
- * `LOAD_INDICATOR(id, parameters?, source?)` (docs/standards/stock/functions/LOAD_INDICATOR.md): computes an
- * indicator of the registry for every candle in a child Indicator Context. Computed series are cached by
- * identifier, completed parameters and source.
+ * The series of another timeframe seen from the current candle of the caller
+ * (docs/standards/stock/README.md, "Aligned and native series"): aligned, `N` elements, the element of the last
+ * candle closed at every candle (`null` before the first one); or native, the elements of the candles closed at the
+ * current candle. The aligned series is computed once and stored.
+ */
+function fromTimeframe(caller: StockContext, target: StockSeries, native: IValue, align: boolean, key: string): IValue {
+  if (target === caller.series && align) return native;
+  const elements = native.raw as readonly IValue[];
+  const alignment = caller.series.alignment(target);
+  if (!align) return Value.array(elements.slice(0, alignment[caller.iteration]! + 1));
+  const alignedKey = `aligned|${target.timeframe ?? ""}|${key}`;
+  const stored = caller.series.getStored(alignedKey);
+  if (stored !== undefined) return stored;
+  const aligned = Value.array(Array.from(alignment, (j) => (j < 0 ? Value.null() : elements[j]!)));
+  caller.series.store(alignedKey, aligned);
+  return aligned;
+}
+
+// LOAD_INDICATOR
+
+/** Options of the overload 4 of `LOAD_INDICATOR`. */
+interface IndicatorOptions {
+  readonly source: IValue | undefined;
+  readonly timeframe: string | undefined;
+  readonly output: string | undefined;
+  readonly align: boolean;
+}
+
+/**
+ * `LOAD_INDICATOR(id, parameters?, source?)` and `LOAD_INDICATOR(id, parameters, options)`
+ * (docs/standards/stock/functions/LOAD_INDICATOR.md): computes an indicator of the registry for every candle (of the
+ * main chart or of another timeframe) in a child Indicator Context. Computed series are stored by timeframe,
+ * identifier, completed parameters and source; `output` and `align` only take a part of a stored series.
  */
 export class LoadIndicatorFunction extends FlFunction {
   constructor(readonly registry: FormulaRegistry) {
     const id = ArgumentTemplate.of("id", Types.Text);
     const parameters = ArgumentTemplate.of("parameters", Types.Object);
     const source = ArgumentTemplate.of("source", Types.Array);
+    const options = ArgumentTemplate.of("options", Types.Object);
+    const name = StockFunctionNames.loadIndicator;
+    const load = (
+      context: IContext,
+      indicator: string,
+      given: IObject | undefined,
+      chosen: IndicatorOptions,
+    ): IValue => {
+      const caller = stockContext(name, context);
+      if (!isStockContext(caller)) return caller;
+      return computeIndicator(registry, caller, indicator, given, chosen);
+    };
+    const plain = (sourceValue: IValue | undefined): IndicatorOptions => ({
+      source: sourceValue,
+      timeframe: undefined,
+      output: undefined,
+      align: true,
+    });
     super(
-      StockFunctionNames.loadIndicator,
+      name,
       [
-        new FunctionOverload([id], (a, c) => computeIndicator(registry, a[0]!.raw as string, undefined, undefined, c)),
+        new FunctionOverload([id], (a, c) => load(c, a[0]!.raw as string, undefined, plain(undefined))),
         new FunctionOverload([id, parameters], (a, c) =>
-          computeIndicator(registry, a[0]!.raw as string, a[1]!.raw as IObject, undefined, c),
+          load(c, a[0]!.raw as string, a[1]!.raw as IObject, plain(undefined)),
         ),
         new FunctionOverload([id, parameters, source], (a, c) =>
-          computeIndicator(registry, a[0]!.raw as string, a[1]!.raw as IObject, a[2], c),
+          load(c, a[0]!.raw as string, a[1]!.raw as IObject, plain(a[2])),
         ),
+        // stock-1.2: options instead of the source
+        new FunctionOverload([id, parameters, options], (a, c) => {
+          const caller = stockContext(name, c);
+          if (!isStockContext(caller)) return caller;
+          const read = readOptions(name, a[2]!.raw as IObject, {
+            source: TypeNames.Array,
+            timeframe: TypeNames.Text,
+            output: TypeNames.Text,
+            align: TypeNames.Boolean,
+          });
+          if (!isOptions(read)) return read;
+          return computeIndicator(registry, caller, a[0]!.raw as string, a[1]!.raw as IObject, {
+            source: read.get("source"),
+            timeframe: read.get("timeframe")?.raw as string | undefined,
+            output: read.get("output")?.raw as string | undefined,
+            align: read.get("align")?.raw !== false,
+          });
+        }),
         // Computing a series changes nothing for the caller; the stored series are only reused
       ],
       FunctionType.Function,
@@ -143,54 +244,136 @@ export class LoadIndicatorFunction extends FlFunction {
 
 function computeIndicator(
   registry: FormulaRegistry,
+  caller: StockContext,
   id: string,
   parameters: IObject | undefined,
-  source: IValue | undefined,
-  context: IContext,
+  options: IndicatorOptions,
 ): IValue {
-  // 1-2. Definition and parameters
-  const prepared = prepareLoad(StockFunctionNames.loadIndicator, registry.indicators, id, parameters, context);
-  if (!isPrepared(prepared)) return prepared;
-  const { caller, definition } = prepared;
-  const series = caller.series;
-  // 3. Source
-  const sourceValue = source ?? series.close;
-  const elements = sourceValue.raw as readonly IValue[];
-  if (elements.length !== series.count) {
-    return operationError(`The source has ${elements.length} elements, but there are ${series.count} candles.`);
+  // 1. The candles: of the main chart, or of another timeframe
+  let target = caller.series;
+  if (options.timeframe !== undefined) {
+    const series = timeframeSeries(caller, options.timeframe);
+    if (!isSeries(series)) return series;
+    target = series;
   }
-  if (!series.isValidSource(elements)) {
+  // 2. Definition and parameters
+  const prepared = prepareLoad(registry.indicators, id, parameters);
+  if (!isPrepared(prepared)) return prepared;
+  // 3. Source
+  const sourceValue = options.source ?? target.close;
+  const elements = sourceValue.raw as readonly IValue[];
+  if (elements.length !== target.count) {
+    const of = target === caller.series ? "" : ` of the timeframe "${target.timeframe}"`;
+    return operationError(`The source has ${elements.length} elements, but there are ${target.count} candles${of}.`);
+  }
+  if (!target.isValidSource(elements)) {
     return operationError("Every element of the source must be a Number or null.");
   }
-  const key = `indicator|${id}|${serialize(prepared.parameters)}|${series.sourceKey(elements)}`;
-  // 4. An indicator that calls itself, directly or indirectly
-  if (callsItself(caller, key)) return operationError(`Indicator "${id}" calls itself.`);
-  const stored = series.getStored(key);
+  const key = seriesKey(target, "indicator", `${id}|${serialize(prepared.parameters)}|${target.sourceKey(elements)}`);
+  // 4-7. The native series of the whole timeframe, then a part of it
+  let native = indicatorSeries(caller, target, prepared, sourceValue, key);
+  if (isError(native)) return native;
+  let outputKey = key;
+  if (options.output !== undefined) {
+    native = indicatorOutput(target, key, native, options.output);
+    if (isError(native)) return native;
+    outputKey = `${key}|output=${options.output}`;
+  }
+  return options.timeframe === undefined ? native : fromTimeframe(caller, target, native, options.align, outputKey);
+}
+
+/** The stored series of the indicator, or the series computed in a child Indicator Context. */
+function indicatorSeries(
+  caller: StockContext,
+  target: StockSeries,
+  prepared: PreparedLoad,
+  source: IValue,
+  key: string,
+): IValue {
+  // An indicator that calls itself, directly or indirectly
+  if (callsItself(caller, key)) return operationError(`Indicator "${prepared.definition.id}" calls itself.`);
+  const stored = target.getStored(key);
   if (stored !== undefined) return stored;
-  // 5-7. Child Indicator Context with its own iterations
-  const child = new IndicatorContext(caller.environment, series, prepared.parameters, sourceValue, key, caller);
+  const child = new IndicatorContext(caller.environment, target, prepared.parameters, source, key, caller);
   child.fixedNow = caller.now;
   child.preExecute();
-  const result = new StockExecutor(series.executor).executeIndicator(definition.formula, child);
-  series.store(key, result);
+  const result = new StockExecutor(target.executor).executeIndicator(prepared.definition.formula, child);
+  target.store(key, result);
   return result;
 }
 
 /**
- * `LOAD_PATTERN(id, parameters?)` (docs/standards/stock/functions/LOAD_PATTERN.md): checks a pattern of the
- * registry for every candle in a child Pattern Context. Returns an Array of `N` Booleans; computed series are cached
- * by identifier and completed parameters.
+ * The series of one output of an indicator: `e[output]` for every Object result `e` (`null` stays `null`), or the
+ * series unchanged for the output `value` of Number results. A result without the output is an `INVALID_KEY_ERROR`.
+ */
+function indicatorOutput(target: StockSeries, key: string, series: IValue, output: string): IValue {
+  const outputKey = `${key}|output=${output}`;
+  const stored = target.getStored(outputKey);
+  if (stored !== undefined) return stored;
+  const elements: IValue[] = [];
+  for (const element of series.raw as readonly IValue[]) {
+    switch (element.type.base) {
+      case TypeNames.Null:
+        elements.push(element);
+        break;
+      case TypeNames.Object: {
+        const property = (element.raw as IObject).getProperty(output);
+        if (property === undefined) return invalidKeyError(`A result of the indicator has no key "${output}".`);
+        elements.push(property.getValue());
+        break;
+      }
+      default:
+        if (output !== "value") {
+          return invalidKeyError(
+            `The results of the indicator are Numbers: the only output is "value", not "${output}".`,
+          );
+        }
+        elements.push(element);
+    }
+  }
+  const result = Value.array(elements);
+  target.store(outputKey, result);
+  return result;
+}
+
+// LOAD_PATTERN
+
+/**
+ * `LOAD_PATTERN(id, parameters?, options?)` (docs/standards/stock/functions/LOAD_PATTERN.md): checks a pattern of the
+ * registry for every candle (of the main chart or of another timeframe) in a child Pattern Context. Returns an Array
+ * of Booleans; computed series are stored by timeframe, identifier and completed parameters.
  */
 export class LoadPatternFunction extends FlFunction {
   constructor(readonly registry: FormulaRegistry) {
     const id = ArgumentTemplate.of("id", Types.Text);
     const parameters = ArgumentTemplate.of("parameters", Types.Object);
+    const options = ArgumentTemplate.of("options", Types.Object);
+    const name = StockFunctionNames.loadPattern;
+    const load = (
+      context: IContext,
+      pattern: string,
+      given: IObject | undefined,
+      chosen: IObject | undefined,
+    ): IValue => {
+      const caller = stockContext(name, context);
+      if (!isStockContext(caller)) return caller;
+      let timeframe: string | undefined;
+      let align = true;
+      if (chosen !== undefined) {
+        const read = readOptions(name, chosen, { timeframe: TypeNames.Text, align: TypeNames.Boolean });
+        if (!isOptions(read)) return read;
+        timeframe = read.get("timeframe")?.raw as string | undefined;
+        align = read.get("align")?.raw !== false;
+      }
+      return computePattern(registry, caller, pattern, given, timeframe, align);
+    };
     super(
-      StockFunctionNames.loadPattern,
+      name,
       [
-        new FunctionOverload([id], (a, c) => computePattern(registry, a[0]!.raw as string, undefined, c)),
-        new FunctionOverload([id, parameters], (a, c) =>
-          computePattern(registry, a[0]!.raw as string, a[1]!.raw as IObject, c),
+        new FunctionOverload([id], (a, c) => load(c, a[0]!.raw as string, undefined, undefined)),
+        new FunctionOverload([id, parameters], (a, c) => load(c, a[0]!.raw as string, a[1]!.raw as IObject, undefined)),
+        new FunctionOverload([id, parameters, options], (a, c) =>
+          load(c, a[0]!.raw as string, a[1]!.raw as IObject, a[2]!.raw as IObject),
         ),
       ],
       FunctionType.Function,
@@ -201,33 +384,73 @@ export class LoadPatternFunction extends FlFunction {
 
 function computePattern(
   registry: FormulaRegistry,
+  caller: StockContext,
   id: string,
   parameters: IObject | undefined,
-  context: IContext,
+  timeframe: string | undefined,
+  align: boolean,
 ): IValue {
+  let target = caller.series;
+  if (timeframe !== undefined) {
+    const series = timeframeSeries(caller, timeframe);
+    if (!isSeries(series)) return series;
+    target = series;
+  }
   // 1-2. Definition and parameters
-  const prepared = prepareLoad(StockFunctionNames.loadPattern, registry.patterns, id, parameters, context);
+  const prepared = prepareLoad(registry.patterns, id, parameters);
   if (!isPrepared(prepared)) return prepared;
-  const { caller, definition } = prepared;
-  const series = caller.series;
-  const key = `pattern|${id}|${serialize(prepared.parameters)}`;
+  const key = seriesKey(target, "pattern", `${id}|${serialize(prepared.parameters)}`);
   // 3. A pattern that calls itself, directly or indirectly
   if (callsItself(caller, key)) return operationError(`Pattern "${id}" calls itself.`);
-  const stored = series.getStored(key);
-  if (stored !== undefined) return stored;
-  // 4-6. Child Pattern Context with its own iterations
-  const child = new PatternContext(caller.environment, series, prepared.parameters, key, caller);
-  child.fixedNow = caller.now;
-  child.preExecute();
-  const result = new StockExecutor(series.executor).executePatternSeries(definition.formula, child);
-  series.store(key, result);
-  return result;
+  let result = target.getStored(key);
+  if (result === undefined) {
+    // 4-6. Child Pattern Context with its own iterations
+    const child = new PatternContext(caller.environment, target, prepared.parameters, key, caller);
+    child.fixedNow = caller.now;
+    child.preExecute();
+    result = new StockExecutor(target.executor).executePatternSeries(prepared.definition.formula, child);
+    target.store(key, result);
+  }
+  if (isError(result) || timeframe === undefined) return result;
+  return fromTimeframe(caller, target, result, align, key);
 }
 
-// stock-1.1
+// LOAD_CANDLES (stock-1.2)
+
+/** `LOAD_CANDLES(timeframe, options?)`: docs/standards/stock/functions/LOAD_CANDLES.md */
+export function createLoadCandlesFunction(): FlFunction {
+  const name = StockFunctionNames.loadCandles;
+  const load = (context: IContext, timeframe: string, options: IObject | undefined): IValue => {
+    const caller = stockContext(name, context);
+    if (!isStockContext(caller)) return caller;
+    let align = true;
+    if (options !== undefined) {
+      const read = readOptions(name, options, { align: TypeNames.Boolean });
+      if (!isOptions(read)) return read;
+      align = read.get("align")?.raw !== false;
+    }
+    const target = timeframeSeries(caller, timeframe);
+    if (!isSeries(target)) return target;
+    return fromTimeframe(caller, target, target.candlesValue, align, "candles");
+  };
+  const timeframe = ArgumentTemplate.of("timeframe", Types.Text);
+  return new FlFunction(
+    name,
+    [
+      new FunctionOverload([timeframe], (a, c) => load(c, a[0]!.raw as string, undefined)),
+      new FunctionOverload([timeframe, ArgumentTemplate.of("options", Types.Object)], (a, c) =>
+        load(c, a[0]!.raw as string, a[1]!.raw as IObject),
+      ),
+    ],
+    FunctionType.Function,
+    { sideEffectFree: true },
+  );
+}
+
+// stock-1.1: LAG and WINDOW
 
 /** Position of the current candle (independent of `@array_indexing`), or an Error. */
-function currentPosition(name: string, series: readonly IValue[], context: IContext): number | IValue {
+export function currentPosition(name: string, series: readonly IValue[], context: IContext): number | IValue {
   if (!(context instanceof StockContext)) return operationError(`"${name}" can be called only in a Stock Context.`);
   if (series.length !== context.count) {
     return operationError(`The series has ${series.length} elements, but there are ${context.count} candles.`);

@@ -6,7 +6,7 @@
 
 ![GitHub License](https://img.shields.io/github/license/Adisoreq/formulang-ts)
 [![npm](https://img.shields.io/npm/v/formulang-ts?label=npm)](https://www.npmjs.com/package/formulang-ts)
-[![Standards](https://img.shields.io/badge/standards-core--1.1%20%C2%B7%20stock--1.1-2fbf71)](docs/conformance.md)
+[![Standards](https://img.shields.io/badge/standards-core--1.2%20%C2%B7%20stock--1.2-2fbf71)](docs/conformance.md)
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Changelog**](CHANGELOG.md)
 
@@ -45,7 +45,7 @@ else console.log(result.error.toString());  // e.g. [UNKNOWN_SYMBOL_ERROR (5)] V
 
 ## Features
 
-- **Core 1.1** and **Stock 1.1** standards (backward compatible with 1.0): all Core functions and procedures, lambdas and delegate calls (`$f(x)`), objects, scoped comments, Unicode texts, `FORMAT`, the time and statistical functions and `NOW`, the Iteration and Time Contexts; the Stock context types, the formula registry of indicators and patterns, `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR`, `LOAD_PATTERN`, `LAG` and `WINDOW`.
+- **Core 1.2** and **Stock 1.2** standards (backward compatible with 1.0 and 1.1): all Core functions and procedures, lambdas and delegate calls (`$f(x)`), objects, scoped comments, Unicode texts, `FORMAT`, the time and statistical functions and `NOW`, the Iteration and Time Contexts with `HISTORY` and the memory (`STORE`, `RECALL`, `CLEAR`), metadata blocks `<@ { ... } @>`, warnings, prepared formulas and resumed iterations; the Stock context types, the formula registry of indicators and patterns, other timeframes (`LOAD_CANDLES`), signal objects, the series functions (`CROSSOVER`, `HIGHEST`, `BARS_SINCE`, ...) and `SCORE`.
 - **Modular**: one package with separate entry points – `formulang-ts`, `formulang-ts/abstractions` and `formulang-ts/stock` – each as an ES module and as CommonJS, with type declarations and no runtime dependencies.
 - **Two levels of API**: a facade working with plain JavaScript values (`evaluate`, `createEngine`), and the pipeline API following the architecture of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet) (environments, contexts, replaceable stages, typed function overloads).
 - **Errors are values**: a formula never throws; every problem is a FormuLang Error with a code from the standard, and validation reports every problem at once.
@@ -101,7 +101,7 @@ import { Environment } from "formulang-ts";
 import { registerStock } from "formulang-ts/stock";
 
 const environment = Environment.create();
-const registry = registerStock(environment).registry;   // LOAD_INDICATOR, LAG, WINDOW, Stock.Candle, stock-1.1
+const registry = registerStock(environment).registry;   // LOAD_INDICATOR, CROSSOVER, Stock.Candle, stock-1.2
 registry.indicators.add("SMA", "WINDOW(SOURCE, PARAMETERS.period, AVG)", { period: 20 });
 ```
 
@@ -109,7 +109,7 @@ The next steps (contexts, iterations over candles, your own functions) are in [G
 
 ## Project status
 
-The library implements the standards **Core 1.1** and **Stock 1.1**, backward compatible with their first stable versions, **Core 1.0** and **Stock 1.0**. From version `1.0.0` on it follows [Semantic Versioning](https://semver.org): changes within the `1.x` versions are backward compatible. See [Conformance](docs/conformance.md) for the details, the implementation choices and the proposals for the standard, and [Development](docs/development.md#releasing) for the releases.
+The library implements the standards **Core 1.2** and **Stock 1.2**, backward compatible with **Core 1.0**, **Core 1.1**, **Stock 1.0** and **Stock 1.1**. From version `1.0.0` on it follows [Semantic Versioning](https://semver.org): changes within the `1.x` versions are backward compatible. See [Conformance](docs/conformance.md) for the details, the implementation choices and the proposals for the standard, and [Development](docs/development.md#releasing) for the releases.
 
 
 ## Related projects

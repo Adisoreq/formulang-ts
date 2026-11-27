@@ -1,18 +1,19 @@
 /**
- * Procedures of the Core standard (docs/standards/core/procedures/README.md). Every procedure returns the
+ * Procedures of the Core standard (docs/standards/core/procedures/README.md): `SET`, `INIT`, `COND_SET`, `REQUIRE`,
+ * and since `core-1.2` `STORE` and `CLEAR`. Every procedure returns the
  * `SUCCESS` Error, or the Error that stopped it.
  *
  * @module
  */
 import type { IError, IObject, IValue } from "../../abstractions/primitives.js";
 import { VariableScope } from "../../abstractions/processing.js";
-import type { IContext } from "../../abstractions/structures.js";
+import type { IContext, IMemory } from "../../abstractions/structures.js";
 import { Errors } from "../errors.js";
 import { ArgumentTemplate } from "../functions/argument-template.js";
 import { Procedure } from "../functions/function.js";
 import { Types } from "../primitives/types.js";
 import type { VariableReference } from "../primitives/variable-reference.js";
-import { anyArg, arr, errorValue, operationError, overload, success, textArg, txt } from "./helpers.js";
+import { anyArg, argumentError, arr, errorValue, operationError, overload, success, textArg, txt } from "./helpers.js";
 
 type VariableOperation = (context: IContext, variable: VariableReference, value: IValue) => IError;
 
@@ -102,6 +103,35 @@ function require(requirements: readonly string[], context: IContext): IValue {
   return success();
 }
 
+// Memory (core-1.2): docs/core/context.md, "Memory"
+
+/** The memory of the context, or the `OPERATION_ERROR` of a context without one (the Default Context). */
+export function memoryOf(context: IContext, name: string): IMemory | IValue {
+  const memory = context.memory;
+  return memory === undefined
+    ? operationError(`"${name}" can be used only in a context with a memory (an Iteration or Time Context).`)
+    : memory;
+}
+
+export const isMemory = (value: IMemory | IValue): value is IMemory => "recall" in value;
+
+/** `STORE(key, value)`: docs/standards/core/procedures/STORE.md */
+function store(key: string, value: IValue, context: IContext): IValue {
+  const memory = memoryOf(context, "STORE");
+  if (!isMemory(memory)) return memory;
+  if (value.type.base === Types.Delegate.base) return argumentError("A Delegate cannot be stored in the memory.");
+  memory.store(key, value);
+  return success();
+}
+
+/** `CLEAR(key)` and `CLEAR()`: docs/standards/core/procedures/CLEAR.md */
+function clear(key: string | undefined, context: IContext): IValue {
+  const memory = memoryOf(context, "CLEAR");
+  if (!isMemory(memory)) return memory;
+  memory.clear(key);
+  return success();
+}
+
 export const coreProcedures = (): Procedure[] => [
   variableProcedure("SET", set),
   variableProcedure("INIT", init),
@@ -109,5 +139,12 @@ export const coreProcedures = (): Procedure[] => [
   new Procedure("REQUIRE", { parameterCount: 1, takesVariable: false }, [
     overload((a, c) => require([txt(a[0])], c), textArg("standard")),
     overload((a, c) => require(arr(a[0]).map(txt), c), ArgumentTemplate.arrayOf("standards", Types.Text)),
+  ]),
+  new Procedure("STORE", { parameterCount: 2, takesVariable: false, writesMemoryOnly: true }, [
+    overload((a, c) => store(txt(a[0]), a[1]!, c), textArg("key"), anyArg("value")),
+  ]),
+  new Procedure("CLEAR", { parameterCount: 1, takesVariable: false, writesMemoryOnly: true }, [
+    overload((a, c) => clear(txt(a[0]), c), textArg("key")),
+    overload((_, c) => clear(undefined, c)),
   ]),
 ];

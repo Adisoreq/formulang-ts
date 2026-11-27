@@ -10,7 +10,11 @@ import { loadCases, runCase, specDirectory, supportedStandards } from "./spec-ru
  * Cases that disagree with the algorithm of the standard itself (docs/conformance.md, "Known deviations"), the same
  * as in FormuLang.NET. They must keep failing: when the standard is fixed and the case passes, remove it here.
  */
-const knownDeviations: Readonly<Record<string, string>> = {};
+const knownDeviations: Readonly<Record<string, string>> = {
+  "stock.context.005":
+    "the result of the strategy is { }, an Object without signal: an OPERATION_ERROR of the iteration " +
+    "(docs/standards/stock/README.md, Strategy Context; the same rule as stock.strategy.002)",
+};
 
 const cases = loadCases();
 

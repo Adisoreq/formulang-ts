@@ -1,7 +1,7 @@
 {
   "name": "formulang-ts",
-  "version": "1.1.0",
-  "description": "Modular TypeScript implementation of the FormuLang formula language standard (Core 1.0, Stock 1.0).",
+  "version": "1.2.0",
+  "description": "Modular TypeScript implementation of the FormuLang formula language standard (Core 1.2, Stock 1.2).",
   "keywords": [
     "formulang",
     "formula",

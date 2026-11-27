@@ -1,0 +1,8 @@
+# Core 1.2: the memory keeps a state between iterations; a write is visible from the next one.
+$sum = RECALL("sum", 0) + I
+STORE("sum", $sum)
+
+# Every 5th iteration starts the count again: a write in the branch that is not selected is discarded
+IF(MOD(I + 1, 5) == 0, CLEAR("sum"), 0)
+
+FORMAT("I = {}: sum = {}, stored before = {}", [I, $sum, RECALL("sum", 0)])

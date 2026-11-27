@@ -24,9 +24,16 @@ const ESCAPES: Readonly<Record<string, string>> = { "\\": "\\", '"': '"', n: "\n
 
 /** Immutable token. */
 export class Token implements IToken {
+  /**
+   * @param line Line of the first character of the token, from 1 (the {@link Tokenizer} gives the line of the text it
+   * tokenizes).
+   * @param column Column of the first character of the token, from 1.
+   */
   constructor(
     readonly type: TokenType,
     readonly value: string,
+    readonly line?: number,
+    readonly column?: number,
   ) {
     Object.freeze(this);
   }
@@ -56,14 +63,19 @@ class TokenizationState {
   hexadecimal = false;
   // Text flags
   escapeSequence = false;
+  // Position of the open token
+  line = 0;
+  column = 0;
 
   get isTokenOpen(): boolean {
     return this.mode !== TokenType.None;
   }
 
-  open(mode: TokenType): void {
+  open(mode: TokenType, line: number, column: number): void {
     this.mode = mode;
     this.current = "";
+    this.line = line;
+    this.column = column;
   }
 
   append(c: string): void {
@@ -71,7 +83,7 @@ class TokenizationState {
   }
 
   close(): void {
-    this.tokens.push(new Token(this.mode, this.current));
+    this.tokens.push(new Token(this.mode, this.current, this.line, this.column));
     this.mode = TokenType.None;
     this.current = "";
     this.dotPresent = false;
@@ -80,8 +92,8 @@ class TokenizationState {
     this.escapeSequence = false;
   }
 
-  insert(type: TokenType, value: string): void {
-    this.tokens.push(new Token(type, value));
+  insert(type: TokenType, value: string, line: number, column: number): void {
+    this.tokens.push(new Token(type, value, line, column));
   }
 }
 
@@ -101,6 +113,14 @@ class LineRun {
 
   private get next(): string | undefined {
     return this.line[this.#index + 1];
+  }
+
+  private open(mode: TokenType): void {
+    this.state.open(mode, this.lineNumber, this.#index + 1);
+  }
+
+  private insert(type: TokenType, value: string, offset = 0): void {
+    this.state.insert(type, value, this.lineNumber, this.#index + 1 + offset);
   }
 
   private syntaxError(message: string): TokenizationError {
@@ -146,20 +166,20 @@ class LineRun {
     const state = this.state;
     if (isWhitespace(c)) return;
     if (isDigit(c)) {
-      state.open(TokenType.Number);
+      this.open(TokenType.Number);
       state.append(c);
     } else if (isIdentifierStart(c)) {
-      state.open(TokenType.Identifier);
+      this.open(TokenType.Identifier);
       state.append(c);
     } else if (c === TEXT_DELIMITER) {
-      state.insert(TokenType.Operator, c);
-      state.open(TokenType.Text);
+      this.insert(TokenType.Operator, c);
+      this.state.open(TokenType.Text, this.lineNumber, this.#index + 2);
     } else if (c === "." && this.next !== undefined && isDigit(this.next)) {
-      state.open(TokenType.Number);
+      this.open(TokenType.Number);
       state.append(c);
       state.dotPresent = true;
     } else {
-      state.open(TokenType.Operator);
+      this.open(TokenType.Operator);
       state.append(c);
       // A character that cannot begin a 2-character operator is closed at once (conformance I1)
       if (!canBeginTwoCharacterOperator(c)) this.close();
@@ -238,7 +258,7 @@ class LineRun {
       state.escapeSequence = false;
     } else if (c === TEXT_DELIMITER) {
       state.close();
-      state.insert(TokenType.Operator, c);
+      this.insert(TokenType.Operator, c);
     } else if (c === ESCAPE) {
       state.escapeSequence = true;
     } else {
@@ -261,7 +281,8 @@ class LineRun {
 /**
  * Tokenization stage (docs/semantics/tokenization.md): splits the cleaned formula into operator, identifier,
  * number and text tokens. Lines are separated by a new line operator token. A text literal is three tokens:
- * `"`, the text (escape sequences resolved) and `"`.
+ * `"`, the text (escape sequences resolved) and `"`. Every token has the line and the column of its first character
+ * in the tokenized text (the new line token: one column after the end of its line).
  */
 export class Tokenizer implements ITokenizer {
   tokenize(expression: string): TokenizationResult {
@@ -270,7 +291,7 @@ export class Tokenizer implements ITokenizer {
     try {
       lines.forEach((line, i) => {
         new LineRun(line, i + 1, state).execute();
-        if (i < lines.length - 1) state.insert(TokenType.Operator, "\n");
+        if (i < lines.length - 1) state.insert(TokenType.Operator, "\n", i + 1, line.length + 1);
       });
     } catch (error) {
       if (error instanceof TokenizationError) return new TokenizationResult(state.tokens, error.error);

@@ -1,0 +1,9 @@
+# Stock 1.2: the trend of the weekly candles filters the daily signals. A week is used only when it is closed,
+# so the strategy never sees the future.
+$weekly = LOAD_INDICATOR("SMA", { period: 4 }, { timeframe: "1w" })
+$week = LOAD_CANDLES("1w")
+$uptrend = READY($weekly, 1) && $week[I].close > $weekly[I]
+$downtrend = READY($weekly, 1) && $week[I].close < $weekly[I]
+
+$fast = LOAD_INDICATOR("EMA", { period: 12 })
+IF($uptrend && CROSSOVER(CLOSE, $fast), BUY, IF($downtrend && CROSSUNDER(CLOSE, $fast), SELL, NEUTRAL))

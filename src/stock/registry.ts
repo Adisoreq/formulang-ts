@@ -1,5 +1,7 @@
-import type { IValue } from "../abstractions/primitives.js";
-import { IdentifierValidator, TypeNames, Value } from "../core/index.js";
+import type { IObject, IValue } from "../abstractions/primitives.js";
+import { IdentifierValidator, TypeNames, Value, readMetadata } from "../core/index.js";
+import { parameterDefaults } from "./contexts.js";
+import { isFormulaId } from "./names.js";
 
 /** Parameter of an indicator or a pattern with its default value, e.g. `period` = `14`. */
 export class FormulaParameter {
@@ -43,7 +45,7 @@ export class FormulaDefinition {
     readonly formula: string,
     parameters: FormulaParameters = [],
   ) {
-    if (!IdentifierValidator.validate(id)) throw new TypeError(`"${id}" is not a valid identifier.`);
+    if (!isFormulaId(id)) throw new TypeError(`"${id}" is not a valid identifier of a definition.`);
     const list = toParameters(parameters);
     for (const parameter of list) {
       if (!IdentifierValidator.validate(parameter.name)) {
@@ -63,6 +65,36 @@ export class FormulaDefinition {
   getParameter(name: string): FormulaParameter | undefined {
     return this.parameters.find((parameter) => parameter.name === name);
   }
+
+  /**
+   * A definition read from the metadata of its formula (docs/standards/stock/README.md, "Formula registry", since
+   * `stock-1.2`): the identifier is `id`, the parameters are the keys of `parameters` with their `default` values
+   * (`null` without a default).
+   *
+   * @throws {TypeError} if the metadata block is not valid or has no valid `id`.
+   */
+  static fromFormula(formula: string): FormulaDefinition {
+    const { id, parameters } = readDefinition(formula);
+    return new FormulaDefinition(id, formula, parameters);
+  }
+}
+
+/** The identifier, the part of the registry and the parameters of the metadata of a formula. */
+function readDefinition(formula: string): { id: string; context: string | undefined; parameters: FormulaParameter[] } {
+  const reading = readMetadata(formula);
+  if (!reading.successful) throw new TypeError(reading.error.message);
+  const metadata = reading.metadata.raw as IObject;
+  const id = metadata.getProperty("id")?.getValue();
+  if (id?.type.base !== TypeNames.Text) throw new TypeError('The metadata of the formula has no Text "id".');
+  const context = metadata.getProperty("context")?.getValue();
+  const parameters = [...parameterDefaults(reading.metadata)].map(
+    ([name, value]) => new FormulaParameter(name, value ?? Value.null()),
+  );
+  return {
+    id: id.raw as string,
+    context: context?.type.base === TypeNames.Text ? (context.raw as string) : undefined,
+    parameters,
+  };
 }
 
 /** One part of the formula registry: the indicators or the patterns. Identifiers are unique within a part. */
@@ -123,4 +155,40 @@ export class FormulaRegistry {
   readonly indicators = new FormulaCollection("Indicator");
   /** Patterns, executed in a Pattern Context and loaded with `LOAD_PATTERN`. */
   readonly patterns = new FormulaCollection("Pattern");
+
+  /**
+   * Adds a definition read from the metadata of its formula (since `stock-1.2`): to the indicators for the
+   * `context` `"Stock.Indicator"`, to the patterns for `"Stock.Pattern"`.
+   *
+   * @throws {TypeError} if the metadata is not valid, has no `id`, or its `context` is not an indicator or a pattern.
+   * @throws {Error} if a definition with the identifier is already registered in the part.
+   */
+  addFormula(formula: string): FormulaDefinition {
+    const { id, context, parameters } = readDefinition(formula);
+    const part =
+      context === "Stock.Indicator" ? this.indicators : context === "Stock.Pattern" ? this.patterns : undefined;
+    if (part === undefined) {
+      throw new TypeError('The "context" of the metadata must be "Stock.Indicator" or "Stock.Pattern".');
+    }
+    const definition = new FormulaDefinition(id, formula, parameters);
+    part.add(definition);
+    return definition;
+  }
+
+  /**
+   * Adds the definition of an indicator or a pattern model (`IndicatorDefinition`, `PatternDefinition`) to its part
+   * of the registry.
+   *
+   * @throws {TypeError} for a strategy, which is not a part of the registry.
+   * @throws {Error} if a definition with the identifier is already registered in the part.
+   */
+  addDefinition(model: { readonly kind: string; toRegistryDefinition?(): FormulaDefinition }): FormulaDefinition {
+    const part = model.kind === "Indicator" ? this.indicators : model.kind === "Pattern" ? this.patterns : undefined;
+    if (part === undefined || model.toRegistryDefinition === undefined) {
+      throw new TypeError("Only indicators and patterns are a part of the formula registry.");
+    }
+    const definition = model.toRegistryDefinition();
+    part.add(definition);
+    return definition;
+  }
 }

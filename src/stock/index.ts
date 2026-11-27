@@ -1,7 +1,6 @@
 /**
- * The Stock extension standard (Stock 1.0): the type `Stock.Candle`, the functions `CANDLE`, `IS_BULLISH`,
- * `IS_BEARISH`, `LOAD_INDICATOR` and `LOAD_PATTERN`, the formula registry, and the Stock, Indicator, Pattern and
- * Strategy context types.
+ * The Stock extension standard (Stock 1.2): the type `Stock.Candle`, the candle, registry, timeframe, series and
+ * strategy functions, the formula registry, and the Stock, Indicator, Pattern and Strategy context types.
  *
  * ```ts
  * import { Environment } from "formulang-ts";
@@ -25,8 +24,25 @@ export {
   FormulaRegistry,
   type FormulaParameters,
 } from "./registry.js";
-export { STOCK_COMPATIBLE_IDENTIFIERS, STOCK_IDENTIFIER, STOCK_REQUIRED_CORE, StockFunctionNames } from "./names.js";
-export { StockContext, IndicatorContext, PatternContext, StrategyContext, type CandlesArgument } from "./contexts.js";
+export {
+  STOCK_COMPATIBLE_IDENTIFIERS,
+  STOCK_IDENTIFIER,
+  STOCK_REQUIRED_CORE,
+  StockFunctionNames,
+  isFormulaId,
+} from "./names.js";
+export {
+  StockContext,
+  IndicatorContext,
+  PatternContext,
+  StrategyContext,
+  signalObjectProblem,
+  parameterDefaults,
+  type CandlesArgument,
+  type StockContextOptions,
+  type TimeframeCandles,
+  type TimeframeSource,
+} from "./contexts.js";
 export { StockExecutor, type PatternResult, type StrategyResult } from "./executor.js";
 export {
   LoadIndicatorFunction,
@@ -35,6 +51,38 @@ export {
   createIsBullishFunction,
   createIsBearishFunction,
   createLagFunction,
+  createLoadCandlesFunction,
   createWindowFunction,
 } from "./functions.js";
+export { createScoreFunction, createSeriesFunctions } from "./series.js";
+export { indicatorResultsError, patternResultError, strategyResultError } from "./executor.js";
+
+// Formula models (FormuLang docs/implementation/formula_models.md)
+export {
+  Definition,
+  IndicatorDefinition,
+  PatternDefinition,
+  StrategyDefinition,
+  DefinitionKind,
+  InvalidDefinitionReason,
+  InvalidDefinitionError,
+  ParameterError,
+  type OutputDescription,
+  type CheckDescription,
+  type GivenParameters,
+  type InstanceJson,
+} from "./model/definitions.js";
+export { Instance, IndicatorInstance, PatternInstance, StrategyInstance } from "./model/instances.js";
+export {
+  LiveRun,
+  LiveIndicatorRun,
+  LivePatternRun,
+  LiveStrategyRun,
+  type Chart,
+  type RunResult,
+  type IndicatorSeries,
+  type PatternSeries,
+  type StrategySignals,
+  type Signal,
+} from "./model/runs.js";
 export { StockStandard, registerStock, getFormulaRegistry } from "./standard.js";

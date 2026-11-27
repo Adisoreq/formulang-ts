@@ -1,0 +1,14 @@
+<@ {
+  id: "metadata-demo",
+  name: "Metadata and warnings",
+  description: "The metadata block is read before the evaluation and does not change the result.",
+  context: "Default",
+  parameters: { rate: { type: "Number", default: 0.05, min: 0, description: "Yearly interest rate" } }
+} @>
+# Core 1.2: the block above is the metadata; the panel below the result shows it.
+$capital = 1000
+$capital * 2       # UNUSED_VALUE: the value of this line is not used
+$years = 3
+$result = $capital * (1 + 0.05) ^ $years
+- 1                # CONTINUED_LINE: a new line ends the previous sequence
+ROUND($result, 2)

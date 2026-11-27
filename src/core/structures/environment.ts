@@ -3,6 +3,7 @@ import type { IValue } from "../../abstractions/primitives.js";
 import { ContainerType } from "../../abstractions/primitives.js";
 import type { IEnvironment, IStandard } from "../../abstractions/structures.js";
 import { FlObject } from "../primitives/object.js";
+import type { MetadataChecker } from "../processing/warnings.js";
 import { TypeNames } from "../primitives/types.js";
 import { Value } from "../primitives/value.js";
 import { numberToString, SerializationVariables } from "../serialization/serializer.js";
@@ -62,7 +63,7 @@ export class Environment extends FlObject implements IEnvironment {
     environment.initVariable(SerializationVariables.includeObjectClass, Value.boolean(false, "false"));
     environment.initVariable(SerializationVariables.maxArrayPreview, Value.number(-1, "-1"));
 
-    // core-1.1 is backward compatible: STANDARDS lists core-1.0 too, so REQUIRE "core-1.0" keeps working
+    // core-1.2 is backward compatible: STANDARDS lists core-1.0 and core-1.1 too, so REQUIRE "core-1.0" keeps working
     for (const compatible of CoreStandard.compatibleIdentifiers) environment.registerStandard(compatible);
     environment.registerStandard(CoreStandard.instance);
     return environment;
@@ -149,6 +150,25 @@ export class Environment extends FlObject implements IEnvironment {
   registerExtendedType(extendedType: string, parentType?: string): void {
     this.#typeTree.addNode(extendedType, extendedType, parentType ?? TypeNames.Object);
     this.#extendedTypes.push(extendedType);
+  }
+
+  readonly #metadataCheckers = new Map<string, MetadataChecker>();
+
+  /**
+   * Adds the check of a top-level key of the metadata (docs/core/metadata.md, "Metadata keys"): the key of an
+   * extension standard (its name in lowercase, e.g. `stock`) or `x` of the host application. A value of a wrong type
+   * is a `METADATA_TYPE` warning.
+   *
+   * @throws {Error} if the key already has a check.
+   */
+  registerMetadataChecker(key: string, checker: MetadataChecker): void {
+    if (this.#metadataCheckers.has(key)) throw new Error(`Metadata key "${key}" already has a check.`);
+    this.#metadataCheckers.set(key, checker);
+  }
+
+  /** The check of a top-level metadata key, or `undefined`. */
+  getMetadataChecker(key: string): MetadataChecker | undefined {
+    return this.#metadataCheckers.get(key);
   }
 }
 

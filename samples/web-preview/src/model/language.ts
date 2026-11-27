@@ -31,6 +31,8 @@ const RULES: readonly [RegExp, TokenClass | "identifier"][] = [
   // A scoped comment may span lines; an unclosed one ends with the formula
   [/<#[\s\S]*?(?:#>|$(?![\s\S]))/y, "comment"],
   [/#[^\n]*/y, "comment"],
+  // Markers of the metadata block <@ { ... } @> (Core 1.2)
+  [/<@(?=\s*\{)|@>/y, "bracket"],
   [/"(?:[^"\\\n]|\\.)*"?/y, "text"],
   [/0[xX][0-9a-fA-F]+|(?:\d[\d_]*(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/y, "number"],
   [/\$[A-Za-z_]\w*/y, "variable"],
@@ -150,4 +152,104 @@ export function filterSuggestions(items: readonly Suggestion[], phrase: string, 
   });
   const unique = matches.filter((item, i) => matches.findIndex((m) => m.label === item.label) === i);
   return unique.slice(0, limit);
+}
+
+// Navigation (Ctrl + click)
+
+/** A highlighted token with its position in the formula (UTF-16 offsets). */
+export interface PositionedToken extends HighlightToken {
+  readonly start: number;
+  readonly end: number;
+}
+
+export function positionedTokens(formula: string, words: Vocabulary): PositionedToken[] {
+  let start = 0;
+  return highlight(formula, words).map((token) => {
+    const positioned = { ...token, start, end: start + token.text.length };
+    start = positioned.end;
+    return positioned;
+  });
+}
+
+/** Anchors of the elements of the API reference page (`reference.html#<anchor>`). */
+export const ReferenceAnchor = {
+  function: (name: string): string => `function-${name}`,
+  procedure: (name: string): string => `procedure-${name}`,
+  constant: (name: string): string => `constant-${name}`,
+  contextConstant: (name: string): string => `context-${name}`,
+  environmentVariable: (name: string): string => `variable-${name}`,
+  literal: (name: string): string => `literal-${name}`,
+} as const;
+
+/** What a Ctrl + click on a token does: open the API reference, or go to the definition of a variable. */
+export type TokenTarget =
+  | { readonly kind: "reference"; readonly anchor: string }
+  | { readonly kind: "definition"; readonly start: number; readonly end: number };
+
+/**
+ * The target of a token: an element of the API reference for a function, a procedure, a constant (of the
+ * environment or of the context type), an environment variable or a literal; the definition of a context variable
+ * in the formula. `undefined` for the other tokens.
+ */
+export function targetOf(
+  token: PositionedToken,
+  formula: string,
+  environment: IEnvironment,
+  context: ContextDefinition,
+): TokenTarget | undefined {
+  const reference = (anchor: string): TokenTarget => ({ kind: "reference", anchor });
+  switch (token.cls) {
+    case "function":
+      return reference(ReferenceAnchor.function(token.text));
+    case "procedure":
+      return reference(ReferenceAnchor.procedure(token.text));
+    case "keyword":
+      return reference(ReferenceAnchor.literal(token.text));
+    case "environment": {
+      const name = token.text.slice(1);
+      return environment.hasKey(name) ? reference(ReferenceAnchor.environmentVariable(name)) : undefined;
+    }
+    case "constant":
+      if (context.constants.some((c) => c.name === token.text)) {
+        return reference(ReferenceAnchor.contextConstant(token.text));
+      }
+      return environment.getProperty(token.text)?.containerType === ContainerType.Constant
+        ? reference(ReferenceAnchor.constant(token.text))
+        : undefined;
+    case "variable": {
+      const definition = definitionOf(formula, token.text);
+      return definition === undefined ? undefined : { kind: "definition", ...definition };
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The definition of a context variable: its first assignment (`$x = `, `$x := `, `$x ?= `, `SET $x`, `INIT $x`), or
+ * its first occurrence outside comments and texts if it is never assigned.
+ */
+export function definitionOf(formula: string, variable: string): { start: number; end: number } | undefined {
+  const occurrences: number[] = [];
+  let assignment: number | undefined;
+  let position = 0;
+  outer: while (position < formula.length) {
+    for (const [pattern, cls] of RULES) {
+      pattern.lastIndex = position;
+      const match = pattern.exec(formula);
+      if (match === null || match[0].length === 0) continue;
+      if (cls === "variable" && match[0] === variable) {
+        occurrences.push(position);
+        const before = formula.slice(0, position);
+        const after = formula.slice(position + variable.length);
+        const assigned = /^\s*(?::=|\?=|=(?!=))/.test(after) || /\b(?:SET|INIT|COND_SET)[\s(]*$/.test(before);
+        if (assigned && assignment === undefined) assignment = position;
+      }
+      position += match[0].length;
+      continue outer;
+    }
+    position++;
+  }
+  const start = assignment ?? occurrences[0];
+  return start === undefined ? undefined : { start, end: start + variable.length };
 }

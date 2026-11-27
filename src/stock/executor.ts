@@ -1,5 +1,13 @@
 import type { IError, IObject, IValue } from "../abstractions/primitives.js";
-import { Errors, Executor, type IterationExecutionResult, TypeNames, Value } from "../core/index.js";
+import {
+  Errors,
+  ExecutionResult,
+  Executor,
+  type FormulaSource,
+  IterationExecutionResult,
+  TypeNames,
+  Value,
+} from "../core/index.js";
 import { type IndicatorContext, type PatternContext, StrategyContext } from "./contexts.js";
 
 function operationError(message: string): IValue {
@@ -41,9 +49,54 @@ export interface PatternResult {
 /** Result of a strategy formula: one signal from -1 (sell) to 1 (buy) per candle; `null` where none was computed. */
 export interface StrategyResult {
   readonly signals: readonly (number | null)[];
+  /**
+   * The signal object of every candle (since `stock-1.2`, with `signal`, `reason`, `checks` and the keys of the host
+   * application), or `undefined` where the formula returned a Number or no signal was computed.
+   */
+  readonly signalObjects: readonly (IObject | undefined)[];
   readonly error: IError;
   readonly successful: boolean;
   readonly iterations: IterationExecutionResult;
+}
+
+/**
+ * The `OPERATION_ERROR` of the results of an indicator that break the expected result of the Indicator Context
+ * (every non-null result is a Number, or every one is an Object of Numbers with the same keys), or `undefined`.
+ */
+export function indicatorResultsError(values: readonly IValue[]): IValue | undefined {
+  let resultKind: string | undefined;
+  let keys: ReadonlySet<string> | undefined;
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]!;
+    const current = kind(value);
+    if (current === undefined) return notAllowed(i, "a value that is not allowed in the Indicator Context");
+    if (current === TypeNames.Object) {
+      const objectKeys = new Set((value.raw as IObject).keys);
+      if (keys !== undefined && !sameKeys(keys, objectKeys)) {
+        return notAllowed(i, "an Object with other keys than the previous results");
+      }
+      keys = objectKeys;
+    }
+    if (current !== TypeNames.Null) {
+      if (resultKind !== undefined && resultKind !== current) {
+        return notAllowed(i, "another kind of value than the previous results");
+      }
+      resultKind = current;
+    }
+  }
+  return undefined;
+}
+
+/** The `OPERATION_ERROR` of an iteration of a pattern that returned a value that is not a Boolean. */
+export function patternResultError(iteration: number): IError {
+  return Errors.operationError(`Iteration ${iteration} of the pattern returned a value that is not a Boolean.`);
+}
+
+/** The `OPERATION_ERROR` of an iteration of a strategy that returned neither a Number nor a signal object. */
+export function strategyResultError(iteration: number): IError {
+  return Errors.operationError(
+    `Iteration ${iteration} of the strategy returned a value that is neither a Number nor a signal object.`,
+  );
 }
 
 /**
@@ -58,36 +111,14 @@ export class StockExecutor {
    * value is a Number, or every one is an Object of Numbers with the same keys; otherwise `OPERATION_ERROR`.
    * An Error of an iteration is returned as it is.
    */
-  executeIndicator(formula: string, context: IndicatorContext): IValue {
+  executeIndicator(formula: FormulaSource, context: IndicatorContext): IValue {
     const run = this.executor.executeIterations(formula, context, true);
     if (!run.successful) return Value.error(run.error);
-    let resultKind: string | undefined;
-    let keys: ReadonlySet<string> | undefined;
-    const values: IValue[] = [];
-    for (const value of run.values) {
-      const current = kind(value);
-      if (current === undefined)
-        return notAllowed(values.length, "a value that is not allowed in the Indicator Context");
-      if (current === TypeNames.Object) {
-        const objectKeys = new Set((value.raw as IObject).keys);
-        if (keys !== undefined && !sameKeys(keys, objectKeys)) {
-          return notAllowed(values.length, "an Object with other keys than the previous results");
-        }
-        keys = objectKeys;
-      }
-      if (current !== TypeNames.Null) {
-        if (resultKind !== undefined && resultKind !== current) {
-          return notAllowed(values.length, "another kind of value than the previous results");
-        }
-        resultKind = current;
-      }
-      values.push(value);
-    }
-    return Value.array(values);
+    return indicatorResultsError(run.values) ?? Value.array(run.values);
   }
 
   /** Runs a pattern formula once per candle; every result must be a Boolean. */
-  executePattern(formula: string, context: PatternContext, stopOnError = true): PatternResult {
+  executePattern(formula: FormulaSource, context: PatternContext, stopOnError = true): PatternResult {
     const run = this.executor.executeIterations(formula, context, stopOnError);
     const indices: number[] = [];
     let error = run.error;
@@ -96,7 +127,7 @@ export class StockExecutor {
       if (result.value.type.base === TypeNames.Boolean) {
         if (result.value.raw === true) indices.push(i);
       } else if (result.successful && error.isSuccess()) {
-        error = Errors.operationError(`Iteration ${i} of the pattern returned a value that is not a Boolean.`);
+        error = patternResultError(i);
         if (stopOnError) break;
       }
     }
@@ -108,29 +139,50 @@ export class StockExecutor {
    * (docs/standards/stock/functions/LOAD_PATTERN.md): an Array of `N` Booleans; the Error of an iteration; or
    * `OPERATION_ERROR` if an iteration returns a value that is not a Boolean.
    */
-  executePatternSeries(formula: string, context: PatternContext): IValue {
+  executePatternSeries(formula: FormulaSource, context: PatternContext): IValue {
     const result = this.executePattern(formula, context, true);
     if (!result.successful) return Value.error(result.error);
     return Value.array(result.iterations.values);
   }
 
-  /** Runs a strategy formula once per candle; every result must be a Number, which is clamped to [-1, 1]. */
-  executeStrategy(formula: string, context: StrategyContext, stopOnError = true): StrategyResult {
-    const run = this.executor.executeIterations(formula, context, stopOnError);
+  /**
+   * Runs a strategy formula once per candle. Every result must be a Number, or since `stock-1.2` a signal object
+   * `{ signal, reason?, checks?, ... }`; the signal is clamped to [-1, 1]. `PARAMETERS` is first completed with the
+   * `default` values of the metadata of the formula (`StrategyContext.completeParameters`).
+   */
+  executeStrategy(formula: FormulaSource, context: StrategyContext, stopOnError = true): StrategyResult {
+    const prepared = typeof formula === "string" ? this.executor.prepare(formula, context) : formula;
+    let run: IterationExecutionResult;
+    if (prepared instanceof ExecutionResult) {
+      run = new IterationExecutionResult([prepared]);
+    } else {
+      context.completeParameters(prepared.metadata);
+      run = this.executor.executeIterations(prepared, context, stopOnError);
+    }
     const signals: (number | null)[] = [];
+    const signalObjects: (IObject | undefined)[] = [];
     let error = run.error;
     for (let i = 0; i < run.results.length; i++) {
-      const result = run.results[i]!;
-      if (result.value.type.base === TypeNames.Number && typeof result.value.raw === "number") {
-        signals.push(Math.min(Math.max(result.value.raw, StrategyContext.sell), StrategyContext.buy));
+      const value = run.results[i]!.value;
+      let signal = value;
+      let object: IObject | undefined;
+      if (value.type.base === TypeNames.Object) {
+        // A valid signal object; an invalid one is an Error of the iteration (StrategyContext.finalizeResult)
+        object = value.raw as IObject;
+        signal = object.getProperty("signal")!.getValue();
+      }
+      if (signal.type.base === TypeNames.Number && typeof signal.raw === "number") {
+        signals.push(Math.min(Math.max(signal.raw, StrategyContext.sell), StrategyContext.buy));
+        signalObjects.push(object);
         continue;
       }
       signals.push(null);
-      if (result.successful && error.isSuccess()) {
-        error = Errors.operationError(`Iteration ${i} of the strategy returned a value that is not a Number.`);
+      signalObjects.push(undefined);
+      if (run.results[i]!.successful && error.isSuccess()) {
+        error = strategyResultError(i);
         if (stopOnError) break;
       }
     }
-    return { signals, error, successful: error.isSuccess(), iterations: run };
+    return { signals, signalObjects, error, successful: error.isSuccess(), iterations: run };
   }
 }

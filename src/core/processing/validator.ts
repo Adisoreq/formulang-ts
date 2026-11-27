@@ -31,6 +31,16 @@ export class Validator implements IValidator {
     scanFormula(formula, errors);
     return new ValidationResult(errors);
   }
+
+  /**
+   * Only the checks of the environment, without a formula: done once for every context before its first hot
+   * execution of a prepared formula (docs/semantics/execution.md, "Execution modes", rule 2).
+   */
+  validateEnvironment(environment: IEnvironment): ValidationResult {
+    const errors: IError[] = [];
+    checkEnvironment(environment, errors);
+    return new ValidationResult(errors);
+  }
 }
 
 // Environment checks

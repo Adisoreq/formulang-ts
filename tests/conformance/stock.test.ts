@@ -127,7 +127,7 @@ describe("Stock standard", () => {
     const { environment } = createEnvironment();
     expect(environment.supports("stock-1.0")).toBe(true);
     expect(environment.getProperty("STANDARDS")?.getValue().toString()).toBe(
-      '["core-1.0", "core-1.1", "stock-1.0", "stock-1.1"]',
+      '["core-1.0", "core-1.1", "core-1.2", "stock-1.0", "stock-1.1", "stock-1.2"]',
     );
     expect(environment.extendedTypes).toContain("Stock.Candle");
     expect(environment.getFunction("CANDLE")).toBeDefined();

@@ -1,0 +1,7 @@
+# Core 1.2: AND and OR stop at the first false / true, and take many arguments.
+$v = null
+$guard = ISNULL($v) || $v > 10          # true: the Error of null > 10 is discarded
+$safe = NOT(ISNULL($v)) && $v > 10      # false
+$all = AND(1 < 2, 2 < 3, 3 < 4)
+$any = OR(false, false, true)
+[$guard, $safe, $all, $any, false && ERROR("never returned")]

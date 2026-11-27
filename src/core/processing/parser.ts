@@ -10,7 +10,7 @@ import { textToLiteral } from "../serialization/serializer.js";
 import { CoreProcedures } from "../standards/core-standard.js";
 import { IdentifierValidator, NumberValidator } from "../validation/validators.js";
 import { CallNode, ConstantNode, LambdaNode, LiteralNode, ParameterNode, Sequence, VariableNode } from "./nodes.js";
-import { ParsingResult } from "./results.js";
+import { ParsingResult, type SequenceStart } from "./results.js";
 
 /** Translation of the infix operators into Core functions (docs/standards/core/semantics/parsing.md). */
 export const infixTranslation: Readonly<Record<string, string>> = Object.freeze({
@@ -112,13 +112,24 @@ class ParameterList {
 
 type ParsedNode = IExpressionNode | ParameterList;
 
+/** The tokens of a sequence, and the separator (`\n` or `;`) before it. */
+interface SequenceTokens {
+  readonly tokens: IToken[];
+  readonly separator: IToken | undefined;
+}
+
 /** Splits the tokens into sequences at a new line or `;` outside of delimiters. */
-function splitIntoSequences(tokens: readonly IToken[]): IToken[][] {
-  const sequences: IToken[][] = [];
+function splitIntoSequences(tokens: readonly IToken[]): SequenceTokens[] {
+  const sequences: SequenceTokens[] = [];
   let current: IToken[] = [];
+  let separator: IToken | undefined;
+  let lastSeparator: IToken | undefined;
   const delimiters: string[] = [];
   const close = (): void => {
-    if (current.length > 0) sequences.push(current);
+    if (current.length > 0) {
+      sequences.push({ tokens: current, separator });
+      separator = lastSeparator = undefined;
+    }
     current = [];
   };
   for (let i = 0; i < tokens.length; i++) {
@@ -138,8 +149,14 @@ function splitIntoSequences(tokens: readonly IToken[]): IToken[][] {
       }
       current.push(token);
     } else if (isOperator(token, "\n") || isOperator(token, ";")) {
-      if (delimiters.length === 0) close();
-      else if (token.value === ";") throw new ParseError('Unexpected ";" inside a delimiter.');
+      if (delimiters.length === 0) {
+        close();
+        // The separator directly before the next sequence: a ";" wins over the new lines after it
+        if (sequences.length > 0) {
+          lastSeparator = token.value === ";" || lastSeparator?.value !== ";" ? token : lastSeparator;
+          separator = lastSeparator;
+        }
+      } else if (token.value === ";") throw new ParseError('Unexpected ";" inside a delimiter.');
       // A new line inside a delimiter is ignored
     } else if (token.type === TokenType.Text) {
       throw new ParseError("A text literal must be enclosed by quotation marks.");
@@ -150,6 +167,38 @@ function splitIntoSequences(tokens: readonly IToken[]): IToken[][] {
   if (delimiters.length > 0) throw new ParseError(`Unclosed "${delimiters.at(-1)}".`);
   close();
   return sequences;
+}
+
+/** Binary operators that cannot start an expression (`-`, `(` and `[` can). */
+const BINARY_ONLY: ReadonlySet<string> = new Set(
+  [...Object.keys(infixTranslation), "=>", "."].filter((symbol) => symbol !== "-"),
+);
+
+/** Line of a token: its position, or the number of new lines before it. */
+function lineOf(token: IToken, tokens: readonly IToken[]): number {
+  if (token.line !== undefined) return token.line;
+  let line = 1;
+  for (const t of tokens) {
+    if (t === token) break;
+    if (isOperator(t, "\n")) line++;
+  }
+  return line;
+}
+
+/**
+ * A sequence after a new line that starts with a binary operator: probably the continuation of the previous line
+ * (docs/standards/core/semantics/warnings.md, "Messages of the parsing errors").
+ */
+function continuationError(sequence: SequenceTokens, all: readonly IToken[]): ParseError | undefined {
+  const first = sequence.tokens[0]!;
+  if (first.type !== TokenType.Operator || !BINARY_ONLY.has(first.value) || sequence.separator?.value !== "\n") {
+    return undefined;
+  }
+  const op = first.value;
+  return new ParseError(
+    `Line ${lineOf(first, all)} starts with "${op}", which has no left operand: a new line ends the previous ` +
+      `sequence. Put "${op}" at the end of the previous line, or the expression in parentheses.`,
+  );
 }
 
 /** Pratt parser of one sequence (docs/standards/core/semantics/parsing.md). */
@@ -415,8 +464,11 @@ export class Parser implements IParser {
 
   parse(tokens: readonly IToken[]): ParsingResult {
     try {
-      const sequences = splitIntoSequences(tokens).map((sequenceTokens) => {
-        const parser = new SequenceParser(sequenceTokens, this.#procedures);
+      const split = splitIntoSequences(tokens);
+      const sequences = split.map((sequenceTokens) => {
+        const error = continuationError(sequenceTokens, tokens);
+        if (error !== undefined) throw error;
+        const parser = new SequenceParser(sequenceTokens.tokens, this.#procedures);
         const root = parser.parseExpression(0);
         const unexpected = parser.peek();
         if (unexpected !== undefined) {
@@ -424,7 +476,13 @@ export class Parser implements IParser {
         }
         return new Sequence(root);
       });
-      return new ParsingResult(sequences);
+      const starts: SequenceStart[] = split.map((sequence, i) => ({
+        first: sequence.tokens[0]!,
+        separator: sequence.separator,
+        previousLast: split[i - 1]?.tokens.at(-1),
+        line: lineOf(sequence.tokens[0]!, tokens),
+      }));
+      return new ParsingResult(sequences, undefined, starts);
     } catch (error) {
       if (error instanceof ParseError) return ParsingResult.failed(Errors.syntaxError(error.message));
       throw error;

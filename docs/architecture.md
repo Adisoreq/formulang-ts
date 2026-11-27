@@ -45,13 +45,24 @@ The standard calls the whole process **execution**; **evaluation** is only its f
 | :-: | :---- | :-------- | :------------------ | :----- |
 | | [Pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md) | `IContext.preExecute` | `Context.create`, `Context.preExecute` | context with copies of the environment variables |
 | 1 | [Validation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/validation.md) | `IValidator` | `Validator` | every error found, at once |
-| 2 | [Clean-up](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/cleanup.md) | `ICleaner` | `Cleaner` | cleaned text |
-| 3 | [Tokenization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/tokenization.md) | `ITokenizer` | `Tokenizer` | tokens |
-| 4 | [Parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/parsing.md) | `IParser` | `Parser` | one tree and parsing queue per sequence, primitive map |
-| 5 | [Evaluation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md) | `IEvaluator` | `Evaluator` | value of the last sequence, or the aborting Error |
-| 6 | [Finalization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/finalization.md) | - | `Executor` | `ExecutionResult` |
+| 2 | [Metadata reading](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/metadata.md#metadata-reading) | - | `readMetadata` | metadata Object, formula with the block replaced by white space |
+| 3 | [Clean-up](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/cleanup.md) | `ICleaner` | `Cleaner` | cleaned text |
+| 4 | [Tokenization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/tokenization.md) | `ITokenizer` | `Tokenizer` | tokens |
+| 5 | [Parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/parsing.md) | `IParser` | `Parser` | one tree and parsing queue per sequence, primitive map |
+| 6 | [Evaluation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md) | `IEvaluator` | `Evaluator` | value of the last sequence, or the aborting Error |
+| 7 | [Finalization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/finalization.md) | - | `Executor` | `ExecutionResult` |
 
 The pipeline stops at the first stage that fails. Validation is the only stage that reports every problem it finds.
+
+Stages 1 - 5 are the **preparation** (`Executor.prepare`): it gives a `PreparedFormula` with the parsed sequences, the metadata and the warnings (`warnings.ts`). A **hot execution** (`Executor.evaluate`, every iteration of `executeIterations`) evaluates a prepared formula again. The clean-up keeps the original position of every character (`Cleaner.cleanUpWithPositions`), so the tokens, the warnings and the parsing error of a line that starts with a binary operator have the lines and columns of the original formula.
+
+### Formula models
+
+`src/core/model/parameters.ts` (parameter specifications and their normalization) and `src/stock/model` (definitions, instances, runs) implement the [formula models](https://github.com/Adisoreq/FormuLang/blob/main/docs/implementation/formula_models.md) of the standard. A definition is read from the metadata only and does not depend on an environment; a run creates the Stock context of its kind and uses the executor, the resumed iterations and the checks of `StockExecutor` (`indicatorResultsError`, ...), so a run gives the same results as `LOAD_INDICATOR` or `StockExecutor`. Display settings, the order model and storage stay in the host application.
+
+### Memory
+
+`ContextMemory` (`src/core/structures/memory.ts`) collects the writes of `STORE` and `CLEAR`. The evaluator records the range of the writes made by every call node of a sequence (also through the lambdas it invokes); when the sequence is complete, the writes of the nodes that are not on the selected path (a branch of `IF` that is not selected, an argument of `AND` / `OR` after the deciding one) are discarded. The executor applies the remaining writes after the finalization, or drops them if the result is an Error.
 
 ### Parsing
 

@@ -1,12 +1,5 @@
+# Stock 1.2: CROSSOVER and CROSSUNDER are false on the first candle and while a value is null.
 $fast = LOAD_INDICATOR("SMA", { period: 10 })
 $slow = LOAD_INDICATOR("SMA", { period: 30 })
 
-$p = MAX(I - 1, @array_indexing)
-$values = [$fast[$p], $slow[$p], $fast[I], $slow[I]]
-$ready = AND(I > @array_indexing, LEN(FILTER($values, (e) => ISNULL(e))) == 0)
-
-IF(NOT($ready),
-   NEUTRAL,
-   IF(AND($fast[$p] <= $slow[$p], $fast[I] > $slow[I]),
-      BUY,
-      IF(AND($fast[$p] >= $slow[$p], $fast[I] < $slow[I]), SELL, NEUTRAL)))
+IF(CROSSOVER($fast, $slow), BUY, IF(CROSSUNDER($fast, $slow), SELL, NEUTRAL))

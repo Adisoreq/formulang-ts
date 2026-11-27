@@ -27,9 +27,20 @@ const tables: Record<string, readonly (readonly [string, string])[]> = {
   Lambdas: lambdas,
 };
 
+/**
+ * Rows of the generated tables whose result changed with `core-1.2`. The tables are generated from the tests of
+ * FormuLang.NET 1.1.0, which implements `core-1.1`; remove a row here when the tables are generated from a version of
+ * FormuLang.NET that implements `core-1.2`.
+ */
+const core12Results: Readonly<Record<string, string>> = {
+  'REQUIRE "core-1.2+"': "[SUCCESS (0)] Operation completed successfully.",
+  '$standards = JOIN(STANDARDS, ", ")\nCONCAT("Supported standards: ", $standards)':
+    "Supported standards: core-1.0, core-1.1, core-1.2",
+};
+
 for (const [name, cases] of Object.entries(tables)) {
   describe(name, () => {
-    it.each(cases)("%j → %j", (formula, expected) => expect(run(formula)).toBe(expected));
+    it.each(cases)("%j → %j", (formula, expected) => expect(run(formula)).toBe(core12Results[formula] ?? expected));
   });
 }
 

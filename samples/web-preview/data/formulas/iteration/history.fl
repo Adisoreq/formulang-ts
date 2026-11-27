@@ -1,0 +1,4 @@
+# Core 1.2: HISTORY holds the results of all the previous iterations; its last element is PREV.
+$value = (I + 1) ^ 2
+$evens = LEN(FILTER(HISTORY, (r) => ISEVEN(r)))
+IF(LEN(HISTORY) == 0, $value, IF($evens >= 3, $value * -1, $value))

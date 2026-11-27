@@ -1,0 +1,11 @@
+# Stock 1.2: series functions at the current candle; missing data gives false or null, never an Error.
+$bullish = MAP(CANDLES, (c) => c.close > c.open)
+{
+  high10: HIGHEST(HIGH, 10),
+  low10: LOWEST(LOW, 10),
+  rising3: RISING(CLOSE, 3),
+  falling3: FALLING(CLOSE, 3),
+  ready20: READY(CLOSE, 20),
+  barsSinceBullish: BARS_SINCE($bullish),
+  lastBullishClose: VALUE_WHEN($bullish, CLOSE)
+}

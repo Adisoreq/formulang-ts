@@ -7,9 +7,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  Context,
   CoreStandard,
   Environment,
-  type ExecutionResult,
+  ExecutionResult,
   Executor,
   FlObject,
   type IError,
@@ -20,15 +21,23 @@ import {
   TypeNames,
   Validator,
   Value,
+  serialize,
 } from "../../src/index.js";
+import type { PatternDefinition } from "../../src/stock/index.js";
 import {
   type Candle,
+  Definition,
   type FormulaCollection,
+  IndicatorDefinition,
+  InvalidDefinitionError,
+  StrategyDefinition,
   IndicatorContext,
   PatternContext,
   StockContext,
+  type StockContextOptions,
   StockStandard,
   StrategyContext,
+  type TimeframeCandles,
   registerStock,
 } from "../../src/stock/index.js";
 
@@ -44,6 +53,8 @@ export interface ConformanceCase {
   readonly registry: JsonObject | undefined;
   readonly formula: string;
   readonly expected: JsonObject;
+  /** Formula models: the given parameter values. */
+  readonly given: JsonObject;
 }
 
 /** Standards implemented by the library. A case that requires another standard is skipped. */
@@ -94,6 +105,7 @@ export function loadCases(): ConformanceCase[] {
         registry: pick("registry"),
         formula: readFormula(item["formula"]!),
         expected: item["expected"] as JsonObject,
+        given: (item["given"] as JsonObject | undefined) ?? {},
       });
     }
   }
@@ -125,6 +137,31 @@ export function runCase(testCase: ConformanceCase): string[] {
     case "result":
       compareOutcome(executeSingle(testCase, environment), expected, "", problems);
       break;
+    case "metadata": {
+      const reading = Executor.create().readMetadata(testCase.formula, environment);
+      if (!reading.successful) {
+        problems.push(`The metadata reading failed: ${reading.error.name}: ${reading.error.message}`);
+      } else if (!valueEquals(reading.metadata, expected)) {
+        problems.push(`Expected the metadata ${JSON.stringify(expected)}, got ${serialize(reading.metadata)}.`);
+      }
+      break;
+    }
+    case "warnings": {
+      const executor = Executor.create();
+      const prepared = executor.prepare(testCase.formula, createContext(testCase, environment, executor));
+      if (prepared instanceof ExecutionResult) {
+        problems.push(`The preparation failed: ${prepared.error.name}: ${prepared.error.message}`);
+        break;
+      }
+      const codes = prepared.warnings.map((warning) => warning.code);
+      if (JSON.stringify(codes) !== JSON.stringify(expected)) {
+        problems.push(
+          `Expected the warnings ${JSON.stringify(expected)}, got ` +
+            JSON.stringify(prepared.warnings.map((warning) => warning.toString())),
+        );
+      }
+      break;
+    }
     case "error": {
       const result = executeSingle(testCase, environment);
       const { code, message } = expected as { code: string; message?: string };
@@ -136,6 +173,15 @@ export function runCase(testCase: ConformanceCase): string[] {
       }
       break;
     }
+    case "definition":
+    case "invalid":
+    case "parameters":
+    case "problems":
+    case "outputs":
+    case "matches":
+    case "signals":
+      runModelCase(testCase, environment, name, expected, problems);
+      break;
     default:
       problems.push(`Unknown expected outcome "${name}".`);
   }
@@ -154,46 +200,73 @@ function executeSingle(testCase: ConformanceCase, environment: Environment): Exe
 function executeAll(testCase: ConformanceCase, environment: Environment): readonly ExecutionResult[] {
   const executor = Executor.create();
   const context = testCase.context;
+  const created = createContext(testCase, environment, executor);
+  if (created instanceof TimeContext) {
+    const frames = (context["frames"] as JsonObject[]).map((frame) => ({
+      timeSeconds: frame["time_s"] as number,
+      deltaSeconds: frame["dtime_s"] as number,
+      ...(typeof frame["now"] === "number" ? { now: frame["now"] } : {}),
+    }));
+    return executor.executeFrames(testCase.formula, created, frames, false).results;
+  }
+  if (created instanceof IterationContext) return executor.executeIterations(testCase.formula, created, false).results;
+  return [executor.execute(testCase.formula, created)];
+}
+
+/** The context of a case. */
+function createContext(testCase: ConformanceCase, environment: Environment, executor: Executor): Context {
+  const context = testCase.context;
   switch (contextType(testCase)) {
     case "Default":
-      return [executor.execute(testCase.formula, environment)];
+      return Context.create(environment);
     case "Iteration":
-      return executor.executeIterations(
-        testCase.formula,
-        IterationContext.create(environment, context["n"] as number),
-        false,
-      ).results;
-    case "Time": {
-      const frames = (context["frames"] as JsonObject[]).map((frame) => ({
-        timeSeconds: frame["time_s"] as number,
-        deltaSeconds: frame["dtime_s"] as number,
-        ...(typeof frame["now"] === "number" ? { now: frame["now"] } : {}),
-      }));
-      return executor.executeFrames(testCase.formula, TimeContext.create(environment), frames, false).results;
-    }
+      return IterationContext.create(environment, context["n"] as number);
+    case "Time":
+      return TimeContext.create(environment);
     default:
-      return executor.executeIterations(testCase.formula, createStockContext(context, environment, executor), false)
-        .results;
+      return createStockContext(context, environment, executor);
   }
 }
 
 function createStockContext(context: JsonObject, environment: Environment, executor: Executor): StockContext {
   const candles = (context["candles"] as JsonObject[]).map(readCandle);
   const parameters = context["parameters"] === undefined ? undefined : (toValue(context["parameters"]).raw as IObject);
+  const options = stockOptions(context, executor);
   switch (context["type"]) {
     case "Stock":
-      return StockContext.create(environment, candles, executor);
+      return StockContext.create(environment, candles, options);
     case "Indicator": {
       const source = context["source"] as (number | null)[] | undefined;
-      return IndicatorContext.create(environment, candles, executor, parameters, source);
+      return IndicatorContext.create(environment, candles, options, parameters, source);
     }
     case "Pattern":
-      return PatternContext.create(environment, candles, executor, parameters);
+      return PatternContext.create(environment, candles, options, parameters);
     case "Strategy":
-      return StrategyContext.create(environment, candles, executor);
+      return StrategyContext.create(environment, candles, options, parameters);
     default:
       throw new Error(`Unknown context type "${String(context["type"])}".`);
   }
+}
+
+/** `timeframe`, `instrument`, `timeframe_length` and `timeframes` of a Stock context (stock-1.2). */
+function stockOptions(context: JsonObject, executor: Executor): StockContextOptions {
+  const timeframes = context["timeframes"] as Record<string, JsonObject> | undefined;
+  return {
+    executor,
+    timeframe: (context["timeframe"] as string | undefined) ?? null,
+    instrument: (context["instrument"] as string | undefined) ?? null,
+    ...(typeof context["timeframe_length"] === "number" ? { timeframeLength: context["timeframe_length"] } : {}),
+    ...(timeframes === undefined
+      ? {}
+      : {
+          timeframes: Object.fromEntries(
+            Object.entries(timeframes).map(([name, data]): [string, TimeframeCandles] => [
+              name,
+              { length: data["length"] as number, candles: (data["candles"] as JsonObject[]).map(readCandle) },
+            ]),
+          ),
+        }),
+  };
 }
 
 function readCandle(candle: JsonObject): Candle {
@@ -206,6 +279,92 @@ function readCandle(candle: JsonObject): Candle {
     volume: optional("volume"),
     time: optional("time"),
   };
+}
+
+// Formula models (docs/implementation/formula_models.md)
+
+function runModelCase(
+  testCase: ConformanceCase,
+  environment: Environment,
+  name: string,
+  expected: Json,
+  problems: string[],
+): void {
+  let definition: IndicatorDefinition | PatternDefinition | StrategyDefinition;
+  try {
+    definition = Definition.fromFormula(testCase.formula, environment);
+  } catch (error) {
+    if (!(error instanceof InvalidDefinitionError)) throw error;
+    if (name !== "invalid") problems.push(`The formula is not a definition: ${error.reason}: ${error.message}`);
+    else if (error.reason !== expected) problems.push(`Expected the reason ${String(expected)}, got ${error.reason}.`);
+    return;
+  }
+  const given = toValue(testCase.given).raw as IObject;
+  switch (name) {
+    case "invalid":
+      problems.push(`Expected an invalid definition (${String(expected)}), got a ${definition.kind}.`);
+      return;
+    case "definition": {
+      const actual = {
+        kind: definition.kind,
+        id: definition.id,
+        name: definition.name,
+        category: definition.category ?? null,
+        parameters: definition.parameters.map((spec) => spec.key),
+        outputs: definition instanceof IndicatorDefinition ? (definition.outputs?.map((o) => o.key) ?? null) : null,
+        checks: definition instanceof StrategyDefinition ? (definition.checks?.map((c) => c.key) ?? null) : null,
+      };
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        problems.push(`Expected the definition ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`);
+      }
+      return;
+    }
+    case "parameters":
+    case "problems": {
+      const normalization = definition.normalize(given, environment);
+      if (name === "parameters") {
+        if (normalization.parameters === undefined) {
+          problems.push(`Expected parameters, got the problems ${JSON.stringify(normalization.problems)}.`);
+        } else if (!valueEquals(Value.object(normalization.parameters), expected)) {
+          problems.push(
+            `Expected ${JSON.stringify(expected)}, got ${serialize(Value.object(normalization.parameters))}.`,
+          );
+        }
+      } else {
+        const actual = normalization.problems.map(({ key, code }) => ({ key, code }));
+        if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+          problems.push(`Expected the problems ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`);
+        }
+      }
+      return;
+    }
+  }
+  const chart = {
+    ...stockOptions(testCase.context, Executor.create()),
+    candles: (testCase.context["candles"] as JsonObject[]).map(readCandle),
+  };
+  const instance = definition.instance(given, environment);
+  const run = instance.compute(environment, chart);
+  if (!run.successful) {
+    problems.push(`The run failed: ${run.error.name}: ${run.error.message}`);
+    return;
+  }
+  let actual: unknown;
+  if ("outputs" in run) actual = Object.fromEntries(run.outputs);
+  else if ("matches" in run) actual = run.matches;
+  else {
+    actual = run.signals.map((signal) => ({
+      index: signal.index,
+      time: signal.time,
+      signal: signal.signal,
+      ...(signal.reason === undefined ? {} : { reason: signal.reason }),
+      ...(signal.checks === undefined ? {} : { checks: signal.checks }),
+      ...(Object.keys(signal.extra).length === 0 ? {} : { extra: signal.extra }),
+    }));
+  }
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    problems.push(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`);
+  }
 }
 
 // Environment

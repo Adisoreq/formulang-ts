@@ -1,0 +1,25 @@
+<@ {
+  id: "rsi-trend-score",
+  name: "Score of conditions",
+  context: "Stock.Strategy",
+  parameters: {
+    trend: { type: "Number", default: 30, min: 2, description: "Period of the trend SMA" },
+    oversold: { type: "Number", default: 45, min: 0, max: 100 }
+  },
+  stock: { checks: { trend: "Close above the SMA", rsi: "RSI leaves the oversold zone", bullish: "Bullish candle" } }
+} @>
+# Stock 1.2: a signal object with the checks that led to it; SCORE is the share of the met conditions.
+$sma = LOAD_INDICATOR("SMA", { period: PARAMETERS.trend })
+$rsi = LOAD_INDICATOR("RSI", { period: 14 })
+
+$buy = {
+  trend: READY($sma, 1) && CLOSE[I] > $sma[I],
+  rsi: CROSSOVER($rsi, PARAMETERS.oversold),
+  bullish: IS_BULLISH(CANDLES[I])
+}
+
+# At least 2 of the 3 conditions: the score is the strength of the signal
+IF(SCORE($buy) >= 2 / 3,
+   { signal: SCORE($buy), reason: FORMAT("{:.0}% of the conditions are met.", [SCORE($buy) * 100]),
+     checks: $buy, stop: LOWEST(LOW, 5) },
+   { signal: NEUTRAL, checks: $buy })

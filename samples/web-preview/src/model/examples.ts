@@ -4,6 +4,7 @@ const ITERATION_CONSTANTS = [
   { name: "I", detail: "index of the current iteration (follows @array_indexing)" },
   { name: "N", detail: "number of iterations" },
   { name: "PREV", detail: "result of the previous iteration; null in the first one" },
+  { name: "HISTORY", detail: "results of all the previous iterations (Core 1.2)" },
 ];
 
 const TIME_CONSTANTS = [
@@ -24,13 +25,15 @@ const STOCK_CONSTANTS = [
   { name: "CLOSE", detail: "closing prices" },
   { name: "VOLUME", detail: "volumes (Number or null)" },
   { name: "TIME", detail: "Unix time in milliseconds (Number or null)" },
+  { name: "TIMEFRAME", detail: 'timeframe of the candles: "1d" (Stock 1.2; the preview also provides "1w")' },
+  { name: "INSTRUMENT", detail: 'instrument of the candles: "MOCK" (Stock 1.2)' },
 ];
 
 export const STANDARDS: readonly StandardDefinition[] = [
   {
     id: "core",
-    name: "Core 1.0",
-    identifier: "core-1.0",
+    name: "Core 1.2",
+    identifier: "core-1.2",
     contexts: [
       {
         kind: "default",
@@ -43,22 +46,24 @@ export const STANDARDS: readonly StandardDefinition[] = [
         kind: "iteration",
         standard: "core",
         name: "Iteration Context",
-        description: "Executes the formula once per iteration; every iteration starts without variables.",
+        description:
+          "Executes the formula once per iteration; every iteration starts without variables, and keeps a state only in PREV, HISTORY and the memory (STORE, RECALL).",
         constants: ITERATION_CONSTANTS,
       },
       {
         kind: "time",
         standard: "core",
         name: "Time Context",
-        description: "Executes the formula once per frame as time passes: animations, simulations, clocks.",
+        description:
+          "Executes the formula once per frame as time passes: animations, simulations, clocks. The memory keeps a state between the frames.",
         constants: TIME_CONSTANTS,
       },
     ],
   },
   {
     id: "stock",
-    name: "Stock 1.0",
-    identifier: "stock-1.0",
+    name: "Stock 1.2",
+    identifier: "stock-1.2",
     contexts: [
       {
         kind: "stock",
@@ -92,12 +97,14 @@ export const STANDARDS: readonly StandardDefinition[] = [
         kind: "strategy",
         standard: "stock",
         name: "Strategy Context",
-        description: "Returns a signal from SELL (-1) to BUY (1) for every candle.",
+        description:
+          "Returns a signal from SELL (-1) to BUY (1) for every candle, or a signal object { signal, reason, checks }.",
         constants: [
           ...STOCK_CONSTANTS,
           { name: "BUY", detail: "1" },
           { name: "NEUTRAL", detail: "0" },
           { name: "SELL", detail: "-1" },
+          { name: "PARAMETERS", detail: "parameters of the strategy: the defaults of its metadata (Stock 1.2)" },
         ],
       },
     ],
@@ -178,6 +185,16 @@ const DEFAULT_EXAMPLES: Example[] = withFormulas<Example>("default", [
     name: "Validation errors",
     description: "Validation reports every problem at once.",
   },
+  {
+    id: "metadata",
+    name: "Metadata and warnings",
+    description: "Core 1.2: a metadata block <@ { ... } @>, and the warnings of lines whose values are not used.",
+  },
+  {
+    id: "logic",
+    name: "Short circuit",
+    description: "Core 1.2: AND and OR stop at the first false or true, and take many arguments.",
+  },
 ]);
 
 const ITERATION_EXAMPLES: Example[] = withFormulas<Example>("iteration", [
@@ -200,6 +217,16 @@ const ITERATION_EXAMPLES: Example[] = withFormulas<Example>("iteration", [
     id: "progress",
     name: "Progress",
     description: "Text built from I and N.",
+  },
+  {
+    id: "memory",
+    name: "Memory",
+    description: "Core 1.2: STORE, RECALL and CLEAR keep a state between the iterations.",
+  },
+  {
+    id: "history",
+    name: "History",
+    description: "Core 1.2: HISTORY, the results of all the previous iterations.",
   },
 ]);
 
@@ -234,6 +261,11 @@ const TIME_EXAMPLES: Example[] = withFormulas<Example>("time", [
     name: "Stopwatch",
     description: "Frames per second measured from DTIME_S.",
   },
+  {
+    id: "distance",
+    name: "Distance",
+    description: "Core 1.2: the memory sums the distance travelled in every frame.",
+  },
 ]);
 
 // Stock
@@ -263,6 +295,16 @@ const STOCK_EXAMPLES: Example[] = withFormulas<Example>("stock", [
     id: "direction",
     name: "Direction",
     description: "IS_BULLISH and IS_BEARISH; a doji is neither.",
+  },
+  {
+    id: "series",
+    name: "Series functions",
+    description: "Stock 1.2: HIGHEST, LOWEST, RISING, FALLING, READY, BARS_SINCE and VALUE_WHEN.",
+  },
+  {
+    id: "weekly",
+    name: "Weekly candles",
+    description: "Stock 1.2: LOAD_CANDLES of another timeframe, TIMEFRAME and INSTRUMENT.",
   },
 ]);
 
@@ -451,7 +493,7 @@ export const INDICATORS: IndicatorConfig[] = withFormulas<IndicatorConfig>("indi
     id: "rsi",
     indicatorId: "RSI",
     name: "Relative strength index",
-    description: "Average gain against average loss of the last `period` changes, from 0 to 100 (simple averages).",
+    description: "Wilder's RSI, from 0 to 100; the averages are kept in the memory (Stock 1.2).",
     parameters: [{ id: "period", name: "Period", defaultValue: 14 }],
     series: [
       {
@@ -531,7 +573,7 @@ export const STRATEGIES: StrategyConfig[] = withFormulas<StrategyConfig>("strate
   {
     id: "crossover",
     name: "Moving average crossover",
-    description: "Buys when the fast SMA crosses above the slow SMA, sells when it crosses below.",
+    description: "Buys when the fast SMA crosses above the slow SMA (CROSSOVER), sells when it crosses below.",
     confidence: 1,
     lifetime: 5,
   },
@@ -555,6 +597,20 @@ export const STRATEGIES: StrategyConfig[] = withFormulas<StrategyConfig>("strate
     description: "Buys on a bullish engulfing pattern (LOAD_PATTERN) above the 20-candle SMA.",
     confidence: 1,
     lifetime: 4,
+  },
+  {
+    id: "score",
+    name: "Score of conditions",
+    description: "Stock 1.2: a signal object with its reason and checks, SCORE, and parameters from the metadata.",
+    confidence: 1,
+    lifetime: 3,
+  },
+  {
+    id: "weekly-trend",
+    name: "Weekly trend",
+    description: "Stock 1.2: daily crossings of the EMA in the direction of the weekly SMA (another timeframe).",
+    confidence: 0.8,
+    lifetime: 3,
   },
 ]);
 

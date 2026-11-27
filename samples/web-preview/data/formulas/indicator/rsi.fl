@@ -1,11 +1,20 @@
-$period = PARAMETERS.period
-$ready = I - @array_indexing >= $period
+# Wilder's RSI (Stock 1.2): the averages are kept in the memory, so the result is only the RSI.
+$p = PARAMETERS.period
+$n = I - @array_indexing                 # number of changes up to the current candle
+$change = IF($n == 0, 0, SOURCE[I] - SOURCE[I - 1])
+$gain = MAX($change, 0)
+$loss = MAX(-$change, 0)
 
-# Changes of the closing price within the window
-$from = MAX(I - $period + 1, @array_indexing + 1)
-$changes = MAP(SEQ(MAX(I - $from + 1, 0), 1, $from), (k) => CLOSE[k] - CLOSE[k - 1])
+# Warm-up: the sums of the first `period` changes
+$sumGain = RECALL("sumGain", 0) + $gain
+$sumLoss = RECALL("sumLoss", 0) + $loss
+STORE("sumGain", $sumGain)
+STORE("sumLoss", $sumLoss)
 
-$gain = SUM(MAP($changes, (c) => MAX(c, 0))) / $period
-$loss = SUM(MAP($changes, (c) => MAX(-c, 0))) / $period
+# The mean of the first `period` changes, then a smoothing of the previous average
+$avgGain = IF($n < $p, null, IF($n == $p, $sumGain / $p, (RECALL("avgGain") * ($p - 1) + $gain) / $p))
+$avgLoss = IF($n < $p, null, IF($n == $p, $sumLoss / $p, (RECALL("avgLoss") * ($p - 1) + $loss) / $p))
+STORE("avgGain", $avgGain)
+STORE("avgLoss", $avgLoss)
 
-IF(NOT($ready), null, IF($loss == 0, 100, 100 - 100 / (1 + $gain / $loss)))
+IF(ISNULL($avgGain), null, IF($avgLoss == 0, 100, 100 - 100 / (1 + $avgGain / $avgLoss)))

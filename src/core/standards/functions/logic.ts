@@ -5,6 +5,7 @@
  */
 import type { FlFunction } from "../../functions/function.js";
 import { Errors } from "../../errors.js";
+import { shortCircuitFunctions } from "./core12.js";
 import {
   B,
   anyArg,
@@ -33,9 +34,9 @@ const comparison = (name: string, operation: (a: number, b: number) => boolean):
   );
 
 export const logicFunctions = (): FlFunction[] => [
-  // Logic and comparison. Arguments are always evaluated: there is no short-circuit evaluation.
-  booleans("AND", (a, b) => a && b),
-  booleans("OR", (a, b) => a || b),
+  // Logic and comparison. Arguments are always computed; since core-1.2 the first false (AND) or true (OR) decides
+  // the result of AND and OR, and the arguments after it are discarded
+  ...shortCircuitFunctions(),
   booleans("XOR", (a, b) => a !== b),
   fn(
     "NOT",

@@ -13,12 +13,23 @@ import type {
 import { ExpressionKind, VariableScope } from "../../abstractions/processing.js";
 import type { IContext, IEnvironment } from "../../abstractions/structures.js";
 import { Errors } from "../errors.js";
-import { FlFunction, isProcedure } from "../functions/function.js";
+import { FlFunction, Procedure, isProcedure } from "../functions/function.js";
 import { TypeNames, Types } from "../primitives/types.js";
 import { Value, isFailure } from "../primitives/value.js";
 import { VariableReference } from "../primitives/variable-reference.js";
 import { suppressErrors } from "../structures/context-variables.js";
+import { ContextMemory } from "../structures/memory.js";
 import { EvaluationResult } from "./results.js";
+
+/**
+ * Writes to the memory of the context (core-1.2) made while a sequence is evaluated: the range of the collected
+ * writes made by every call node, so the writes of the nodes that are not on the selected path can be discarded.
+ */
+class WriteTracker {
+  writes: Map<IExpressionNode, readonly [number, number]> | undefined;
+
+  constructor(readonly memory: ContextMemory) {}
+}
 
 /** Parameters of the lambdas being invoked; a lambda body can read the parameters of enclosing lambdas. */
 class Scope {
@@ -57,14 +68,20 @@ export class Evaluator implements IEvaluator {
   /** @internal Evaluates a sequence of the formula or a lambda body. */
   evaluateSequence(sequence: ISequence, scope: Scope, isFormulaSequence: boolean): IValue {
     const results = new Map<IExpressionNode, IValue>();
+    const memory = scope.context.memory;
+    const tracker = memory instanceof ContextMemory ? new WriteTracker(memory) : undefined;
+    let value: IValue;
     if (skipsBranches(sequence, scope.context.environment)) {
-      return this.#evaluateSelected(sequence.root, sequence, results, scope, isFormulaSequence);
+      value = this.#evaluateSelected(sequence.root, sequence, results, scope, isFormulaSequence, tracker);
+    } else {
+      for (const node of sequence.queue) {
+        const declaration = isFormulaSequence && node === sequence.root;
+        results.set(node, this.#evaluateNode(node, results, scope, declaration, tracker));
+      }
+      value = results.get(sequence.root)!;
     }
-    for (const node of sequence.queue) {
-      const declaration = isFormulaSequence && node === sequence.root;
-      results.set(node, this.#evaluateNode(node, results, scope, declaration));
-    }
-    return results.get(sequence.root)!;
+    if (tracker?.writes !== undefined) discardUnselectedWrites(sequence.root, results, tracker);
+    return value;
   }
 
   /**
@@ -77,21 +94,24 @@ export class Evaluator implements IEvaluator {
     results: Map<IExpressionNode, IValue>,
     scope: Scope,
     isFormulaSequence: boolean,
+    tracker: WriteTracker | undefined,
   ): IValue {
     const known = results.get(node);
     if (known !== undefined) return known;
     if (node.kind === ExpressionKind.FunctionCall && node.name === IF_NAME && node.children.length === 3) {
-      const condition = this.#evaluateSelected(node.children[0]!, sequence, results, scope, isFormulaSequence);
+      const condition = this.#evaluateSelected(node.children[0]!, sequence, results, scope, isFormulaSequence, tracker);
       if (condition.type.base === TypeNames.Boolean) {
         // IF(true, then, else) returns then, IF(false, then, else) returns else, unchanged
         const selected = node.children[condition.raw === true ? 1 : 2]!;
-        const value = this.#evaluateSelected(selected, sequence, results, scope, isFormulaSequence);
+        const value = this.#evaluateSelected(selected, sequence, results, scope, isFormulaSequence, tracker);
         results.set(node, value);
         return value;
       }
     }
-    for (const child of node.children) this.#evaluateSelected(child, sequence, results, scope, isFormulaSequence);
-    const value = this.#evaluateNode(node, results, scope, isFormulaSequence && node === sequence.root);
+    for (const child of node.children) {
+      this.#evaluateSelected(child, sequence, results, scope, isFormulaSequence, tracker);
+    }
+    const value = this.#evaluateNode(node, results, scope, isFormulaSequence && node === sequence.root, tracker);
     results.set(node, value);
     return value;
   }
@@ -101,6 +121,7 @@ export class Evaluator implements IEvaluator {
     results: ReadonlyMap<IExpressionNode, IValue>,
     scope: Scope,
     root: boolean,
+    tracker: WriteTracker | undefined,
   ): IValue {
     switch (node.kind) {
       case ExpressionKind.Value:
@@ -119,9 +140,63 @@ export class Evaluator implements IEvaluator {
       case ExpressionKind.Lambda:
         return Value.delegate(new Lambda(node, this, scope), node.key);
       case ExpressionKind.FunctionCall:
-        return call(node, results, scope.context);
+        return call(node, results, scope.context, tracker);
     }
   }
+}
+
+// Memory writes on the selected path only (docs/core/context.md, "Memory", rule 2)
+//
+// All the arguments of IF, AND and OR are computed before the call, so a STORE or CLEAR in a branch of IF that is not
+// selected, or in an argument of AND / OR after the deciding one, is executed too. Its write is collected with the
+// call node that made it (also through a lambda invoked by the call), and discarded when the sequence is complete.
+
+const AND_NAME = "AND";
+const OR_NAME = "OR";
+
+function discardUnselectedWrites(
+  root: IExpressionNode,
+  results: ReadonlyMap<IExpressionNode, IValue>,
+  tracker: WriteTracker,
+): void {
+  const selected = new Set<IExpressionNode>();
+  markSelected(root, results, selected);
+  for (const [node, [from, to]] of tracker.writes!) {
+    if (!selected.has(node)) tracker.memory.discard(from, to);
+  }
+}
+
+/**
+ * Marks the nodes on the selected path: the condition of `IF` and its selected branch (none for a condition that is
+ * not a Boolean, because `IF` then selects no branch), the arguments of `AND` / `OR` up to the deciding one, and
+ * every child of the other nodes.
+ */
+function markSelected(
+  node: IExpressionNode,
+  results: ReadonlyMap<IExpressionNode, IValue>,
+  selected: Set<IExpressionNode>,
+): void {
+  selected.add(node);
+  if (node.kind !== ExpressionKind.FunctionCall) return;
+  const children = node.children;
+  if (node.name === IF_NAME && children.length === 3) {
+    markSelected(children[0]!, results, selected);
+    const condition = results.get(children[0]!);
+    if (condition?.type.base === TypeNames.Boolean) {
+      markSelected(children[condition.raw === true ? 1 : 2]!, results, selected);
+    }
+    return;
+  }
+  if ((node.name === AND_NAME || node.name === OR_NAME) && children.length >= 2) {
+    const deciding = node.name === OR_NAME;
+    for (const child of children) {
+      markSelected(child, results, selected);
+      const value = results.get(child);
+      if (value?.type.base === TypeNames.Boolean && value.raw === deciding) return;
+    }
+    return;
+  }
+  for (const child of children) markSelected(child, results, selected);
 }
 
 // Skipping the branch of IF that is not selected (an optimization with the same result)
@@ -169,7 +244,10 @@ function isSideEffectFree(node: IExpressionNode, environment: IEnvironment, stat
       return isSideEffectFree(node.body.root, environment, state);
     case ExpressionKind.FunctionCall: {
       const fn = environment.getFunction(node.name);
-      if (!(fn instanceof FlFunction) || !fn.sideEffectFree) return false;
+      // STORE and CLEAR are allowed: their writes in a branch that is not selected are discarded anyway
+      if (!(fn instanceof FlFunction) || !(fn.sideEffectFree || (fn instanceof Procedure && fn.writesMemoryOnly))) {
+        return false;
+      }
       if (node.name === IF_NAME) state.hasIf = true;
       return node.children.every(
         // A delegate argument is invoked by the function: it must be a lambda (checked as a node) or a side-effect-free
@@ -197,7 +275,12 @@ function isKnownDelegate(node: IExpressionNode, environment: IEnvironment): bool
   return fn === undefined || (fn instanceof FlFunction && fn.sideEffectFree);
 }
 
-function call(node: ICallExpression, results: ReadonlyMap<IExpressionNode, IValue>, context: IContext): IValue {
+function call(
+  node: ICallExpression,
+  results: ReadonlyMap<IExpressionNode, IValue>,
+  context: IContext,
+  tracker: WriteTracker | undefined,
+): IValue {
   const fn = context.environment.getFunction(node.name);
   if (fn === undefined) {
     return Value.error(Errors.unknownSymbolError(`Function "${node.name}" is not defined.`), node.key);
@@ -209,7 +292,12 @@ function call(node: ICallExpression, results: ReadonlyMap<IExpressionNode, IValu
       ? new VariableReference(child.scope, child.name).toValue()
       : results.get(child)!,
   );
-  return fn.invoke(args, context);
+  if (tracker === undefined) return fn.invoke(args, context);
+  const before = tracker.memory.pendingCount;
+  const value = fn.invoke(args, context);
+  const after = tracker.memory.pendingCount;
+  if (after > before) (tracker.writes ??= new Map()).set(node, [before, after]);
+  return value;
 }
 
 // Reading variables (docs/semantics/evaluation.md, "Direct extraction")

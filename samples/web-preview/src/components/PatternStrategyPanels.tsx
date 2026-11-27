@@ -255,6 +255,16 @@ export function StrategyOutput(props: { readonly run: StrategyRun; readonly diag
   const verdict = () => (final() > 0.05 ? "BUY" : final() < -0.05 ? "SELL" : "NEUTRAL");
   const signalsOf = (id: string) => props.run.strategies.find((s) => s.id === id);
   const error = () => signalsOf(state.selected.strategy)?.error;
+  const selectedName = () => state.strategies.find((s) => s.id === state.selected.strategy)?.name ?? "";
+  // Stock 1.2: the last signal object of the selected strategy, with its reason and checks
+  const lastDetails = () => {
+    const details = signalsOf(state.selected.strategy)?.details ?? [];
+    for (let index = details.length - 1; index >= 0; index--) {
+      const d = details[index];
+      if (d !== undefined) return { index, details: d };
+    }
+    return undefined;
+  };
 
   return (
     <>
@@ -374,6 +384,32 @@ export function StrategyOutput(props: { readonly run: StrategyRun; readonly diag
         Value of a strategy = its signal (-1 … 1) × confidence, active for <em>lifetime</em> candles. The final proposal
         is the sum of the values of the active strategies.
       </p>
+      <Show when={lastDetails()}>
+        {(details) => (
+          <details class="panel signal-details" open>
+            <summary>
+              Signal object of {selectedName()} · {dateOf(details().index)}
+            </summary>
+            <Show when={details().details.reason}>{(reason) => <p>{reason()}</p>}</Show>
+            <ul>
+              <For each={Object.entries(details().details.checks ?? {})}>
+                {([key, passed]) => (
+                  <li class={passed ? "check-true" : "check-false"}>
+                    {passed ? "✓" : "✗"} {key}
+                  </li>
+                )}
+              </For>
+              <For each={Object.entries(details().details.extra)}>
+                {([key, value]) => (
+                  <li class="muted">
+                    {key}: {JSON.stringify(value)}
+                  </li>
+                )}
+              </For>
+            </ul>
+          </details>
+        )}
+      </Show>
     </>
   );
 }

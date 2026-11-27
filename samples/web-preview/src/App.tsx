@@ -27,7 +27,7 @@ import {
   runTime,
 } from "./model/engine";
 import { CONTEXTS, EXAMPLES, NEW_FORMULA, formulaKey } from "./model/examples";
-import { suggestions, vocabulary } from "./model/language";
+import { suggestions, targetOf, vocabulary } from "./model/language";
 import { regenerateCandles, resetFormula, selectedFormula, setFormula, setState, state } from "./model/state";
 import type { ContextKind, Example } from "./model/types";
 
@@ -97,7 +97,7 @@ function execute(): Execution {
       break;
   }
   const duration = performance.now() - started;
-  return { kind, run, diagnostics: diagnose(formula, environment), duration };
+  return { kind, run, diagnostics: diagnose(formula, environment, kind), duration };
 }
 
 export function App() {
@@ -218,10 +218,16 @@ export function App() {
           onChange={(value) => setFormula(value)}
           vocabulary={words()}
           suggestions={items()}
+          target={(token) => targetOf(token, selectedFormula(), referenceEnvironment, context())}
+          onReference={(anchor) => window.open(`reference.html#${anchor}`, "formulang-reference")}
         />
         <p class="hint">
           <kbd>Tab</kbd>/<kbd>Enter</kbd> inserts a suggestion · <kbd>↑</kbd> <kbd>↓</kbd> choose · <kbd>Esc</kbd>{" "}
-          closes
+          closes · <kbd>Ctrl</kbd> + click opens the{" "}
+          <a href="reference.html" target="formulang-reference">
+            API reference
+          </a>{" "}
+          of a function or constant, or goes to the definition of a variable
         </p>
         <Show when={state.context === "iteration"}>
           <div class="config">

@@ -1,0 +1,10 @@
+# Stock 1.2: candles of another timeframe. The chart is daily (TIMEFRAME); the preview also provides "1w".
+# The aligned series has one element for every daily candle: the last week closed at it, or null.
+$week = LOAD_CANDLES("1w")[I]
+$closed = LOAD_CANDLES("1w", { align: false })
+{
+  timeframe: TIMEFRAME,
+  instrument: INSTRUMENT,
+  closedWeeks: LEN($closed),
+  weekClose: IF(ISNULL($week), null, $week.close)
+}

@@ -1,6 +1,14 @@
 import type { IFunction } from "../abstractions/functions.js";
 import type { IAbstractTree, IEnvironment, IStandard, IStandardVersion } from "../abstractions/structures.js";
-import { AbstractTree, type Environment, StandardVersion, TypeNames, satisfies } from "../core/index.js";
+import {
+  AbstractTree,
+  type Environment,
+  type MetadataChecker,
+  MetadataChecks,
+  StandardVersion,
+  TypeNames,
+  satisfies,
+} from "../core/index.js";
 import { CANDLE_TYPE } from "./candle.js";
 import {
   LoadIndicatorFunction,
@@ -9,12 +17,14 @@ import {
   createIsBearishFunction,
   createIsBullishFunction,
   createLagFunction,
+  createLoadCandlesFunction,
   createWindowFunction,
 } from "./functions.js";
+import { createScoreFunction, createSeriesFunctions } from "./series.js";
 import { STOCK_COMPATIBLE_IDENTIFIERS, STOCK_IDENTIFIER, STOCK_REQUIRED_CORE, StockFunctionNames } from "./names.js";
 import { FormulaRegistry } from "./registry.js";
 
-/** The Stock standard, `stock-1.1` (docs/standards/stock/README.md). Every instance has its own formula registry. */
+/** The Stock standard, `stock-1.2` (docs/standards/stock/README.md). Every instance has its own formula registry. */
 export class StockStandard implements IStandard {
   /** Identifier of the implemented version. */
   static readonly identifier = STOCK_IDENTIFIER;
@@ -25,7 +35,7 @@ export class StockStandard implements IStandard {
 
   readonly id = "stock";
   readonly name = "Stock";
-  readonly version: IStandardVersion = new StandardVersion(1, 1);
+  readonly version: IStandardVersion = new StandardVersion(1, 2);
   readonly extendedTypes: readonly string[] = Object.freeze([CANDLE_TYPE]);
   readonly extendedTypeTree: IAbstractTree<string>;
   readonly namedFunctions: readonly IFunction[];
@@ -43,23 +53,38 @@ export class StockStandard implements IStandard {
       createIsBearishFunction(),
       new LoadIndicatorFunction(registry),
       new LoadPatternFunction(registry),
+      createLoadCandlesFunction(),
       createLagFunction(),
       createWindowFunction(),
+      ...createSeriesFunctions(),
+      createScoreFunction(),
     ]);
   }
 
-  /** Whether the environment supports the required version of the Core standard (`core-1+`). */
+  /** Whether the environment supports the required version of the Core standard (`core-1.2+`). */
   static isCoreSupported(environment: IEnvironment): boolean {
-    return environment.standards.some((standard) => satisfies(standard, "core", ["1+"]));
+    return environment.standards.some((standard) => satisfies(standard, "core", ["1", "2+"]));
   }
+
+  /**
+   * The check of the `stock` key of the metadata (docs/standards/stock/README.md, "Metadata"): `category` (Text),
+   * `outputs` (an Object of `{ name, description }`) and `checks` (an Object of Texts).
+   */
+  static readonly metadataChecker: MetadataChecker = MetadataChecks.object({
+    category: MetadataChecks.text,
+    outputs: MetadataChecks.objectOf(
+      MetadataChecks.object({ name: MetadataChecks.text, description: MetadataChecks.text }),
+    ),
+    checks: MetadataChecks.objectOf(MetadataChecks.text),
+  });
 }
 
 /**
- * Adds the Stock standard to an environment: `stock-1.0` and `stock-1.1` in `STANDARDS`, the type `Stock.Candle`, the
- * functions `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR`, `LOAD_PATTERN`, `LAG` and `WINDOW`, and the formula
- * registry.
+ * Adds the Stock standard to an environment: `stock-1.0`, `stock-1.1` and `stock-1.2` in `STANDARDS`, the type
+ * `Stock.Candle`, the functions of the standard, the formula registry, and the check of the `stock` key of the
+ * metadata.
  *
- * @throws {Error} if the environment does not support `core-1+`, or the standard is already registered.
+ * @throws {Error} if the environment does not support `core-1.2+`, or the standard is already registered.
  */
 export function registerStock(environment: Environment, registry?: FormulaRegistry): StockStandard {
   if (!StockStandard.isCoreSupported(environment)) {
@@ -68,6 +93,7 @@ export function registerStock(environment: Environment, registry?: FormulaRegist
   const standard = new StockStandard(registry);
   for (const compatible of STOCK_COMPATIBLE_IDENTIFIERS) environment.registerStandard(compatible);
   environment.registerStandard(standard);
+  environment.registerMetadataChecker(standard.id, StockStandard.metadataChecker);
   return standard;
 }
 

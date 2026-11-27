@@ -51,6 +51,37 @@ export interface IOperationResult {
 export interface IToken {
   readonly type: TokenType;
   readonly value: string;
+  /** Line of the first character of the token (from 1), if the tokenizer records positions. */
+  readonly line?: number | undefined;
+  /** Column of the first character of the token (from 1), if the tokenizer records positions. */
+  readonly column?: number | undefined;
+}
+
+/** Codes of the warnings of the Core standard (docs/standards/core/semantics/warnings.md, since `core-1.2`). */
+export const WarningCode = {
+  /** A sequence that is not the last one computes a value that is discarded. */
+  UnusedValue: "UNUSED_VALUE",
+  /** A sequence that starts with `-` or `!` on the line after another sequence. */
+  ContinuedLine: "CONTINUED_LINE",
+  /** A known key of the metadata has a value of a wrong type. */
+  MetadataType: "METADATA_TYPE",
+  /** The `context` of the metadata is not the context type of the execution, nor one of its base types. */
+  MetadataContext: "METADATA_CONTEXT",
+} as const;
+export type WarningCode = (typeof WarningCode)[keyof typeof WarningCode];
+
+/**
+ * A message about a formula that is valid, but probably not what the author meant. A warning never changes the
+ * result of a formula (docs/standards/core/semantics/warnings.md).
+ */
+export interface IWarning {
+  /** Code of the warning; the Core standard defines the {@link WarningCode}s. */
+  readonly code: string;
+  readonly message: string;
+  /** Line of the original formula text, from 1. */
+  readonly line: number;
+  /** Column of the original formula text (in Unicode code points), from 1. */
+  readonly column: number;
 }
 
 // Stage 1: validation
@@ -160,6 +191,29 @@ export interface IParsingResult extends IOperationResult {
 
 export interface IParser {
   parse(tokens: readonly IToken[]): IParsingResult;
+}
+
+// Preparation (docs/semantics/execution.md, "Execution modes", since core-1.2)
+
+/** Result of the metadata reading (docs/core/metadata.md, "Metadata reading"). */
+export interface IMetadataResult extends IOperationResult {
+  /** The metadata Object; `{ }` for a formula without a metadata block, or after an Error. */
+  readonly metadata: IValue;
+  /** The formula with the metadata block replaced by white space, so the positions of the rest do not change. */
+  readonly formula: string;
+}
+
+/**
+ * A **prepared formula**: the result of the preparation (validation, metadata reading, clean-up, tokenization and
+ * parsing). A hot execution evaluates it again without preparing the formula.
+ */
+export interface IPreparedFormula extends IParsingResult {
+  /** The formula text that was prepared. */
+  readonly formula: string;
+  /** The metadata Object of the formula (`{ }` without a metadata block). */
+  readonly metadata: IValue;
+  /** Warnings of the preparation, in the order of their positions. */
+  readonly warnings: readonly IWarning[];
 }
 
 // Stage 5: evaluation

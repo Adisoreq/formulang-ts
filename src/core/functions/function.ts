@@ -136,6 +136,12 @@ export interface ProcedureOptions {
   readonly parameterCount: number;
   /** The first argument is the variable itself, not its value. */
   readonly takesVariable: boolean;
+  /**
+   * The only side effects of the procedure are writes to the memory of the context (`STORE`, `CLEAR`). They are
+   * discarded in a branch of `IF` that is not selected, so the branch may still be skipped
+   * (docs/standards/core/functions/IF.md, "Performance"). `false` by default.
+   */
+  readonly writesMemoryOnly?: boolean;
 }
 
 /** Named procedure (docs/standards/core/procedures/README.md). */
@@ -143,11 +149,14 @@ export class Procedure extends FlFunction implements IProcedure {
   declare readonly functionType: typeof FunctionType.Procedure;
   readonly parameterCount: number;
   readonly takesVariable: boolean;
+  /** See {@link ProcedureOptions.writesMemoryOnly}. */
+  readonly writesMemoryOnly: boolean;
 
   constructor(name: string, options: ProcedureOptions, overloads: readonly IFunctionOverload[]) {
     super(name, overloads, FunctionType.Procedure);
     this.parameterCount = options.parameterCount;
     this.takesVariable = options.takesVariable;
+    this.writesMemoryOnly = options.writesMemoryOnly === true;
   }
 }
 

@@ -12,7 +12,7 @@ function random(seed: number): () => number {
   };
 }
 
-const DAY = 24 * 60 * 60 * 1000;
+export const DAY = 24 * 60 * 60 * 1000;
 const START = Date.UTC(2025, 0, 1);
 const round = (value: number): number => Math.round(value * 100) / 100;
 
@@ -56,4 +56,35 @@ export function generateCandles(count: number, seed: number): ChartCandle[] {
 
 export function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000);
+}
+
+/**
+ * Candles of a longer timeframe (`length` milliseconds, from the time of the first candle), built from the candles:
+ * only the candles that are closed at the end of the last candle, as a host application provides them (Stock 1.2,
+ * "Other timeframes").
+ */
+export function aggregateCandles(candles: readonly ChartCandle[], length: number): ChartCandle[] {
+  const first = candles[0];
+  const last = candles.at(-1);
+  if (first === undefined || last === undefined) return [];
+  const end = last.time + DAY;
+  const result: ChartCandle[] = [];
+  let current: ChartCandle | undefined;
+  for (const candle of candles) {
+    const time = first.time + Math.floor((candle.time - first.time) / length) * length;
+    if (current?.time !== time) {
+      if (current !== undefined) result.push(current);
+      current = { ...candle, time };
+    } else {
+      current = {
+        ...current,
+        high: Math.max(current.high, candle.high),
+        low: Math.min(current.low, candle.low),
+        close: candle.close,
+        volume: current.volume + candle.volume,
+      };
+    }
+  }
+  if (current !== undefined) result.push(current);
+  return result.filter((candle) => candle.time + length <= end);
 }
